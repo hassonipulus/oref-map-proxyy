@@ -698,7 +698,7 @@ html, body { height: 100%; font-family: Arial, sans-serif; }
         weight: 1,
         interactive: true
       }).addTo(map);
-      polygon.bindTooltip(cityNames[i], { direction: 'top' });
+      polygon.bindTooltip(cityNames[i], { direction: 'top', offset: [0, -20] });
       (function(name, poly) {
         poly.on('click', function() { showPopup(name, poly); });
       })(cityNames[i], polygon);
