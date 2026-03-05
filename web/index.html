@@ -441,22 +441,33 @@ html, body { height: 100%; font-family: Arial, sans-serif; }
     var ctx = getAudioContext();
     if (!ctx) return;
 
+    function playSineHalf(startTime) {
+      var osc = ctx.createOscillator();
+      var gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(880, startTime);
+      osc.frequency.linearRampToValueAtTime(440, startTime + 0.3);
+      gain.gain.setValueAtTime(0.3, startTime);
+      gain.gain.linearRampToValueAtTime(0, startTime + 0.3);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(startTime);
+      osc.stop(startTime + 0.3);
+    }
+
     function playSequence(buffer) {
       var half = buffer.duration / 2;
       var now = ctx.currentTime;
-
       // 1. First half
       var s1 = ctx.createBufferSource();
       s1.buffer = buffer;
       s1.connect(ctx.destination);
       s1.start(now, 0, half);
-
       // 2. Repeat first half
       var s2 = ctx.createBufferSource();
       s2.buffer = buffer;
       s2.connect(ctx.destination);
       s2.start(now + half, 0, half);
-
       // 3. Entire file
       var s3 = ctx.createBufferSource();
       s3.buffer = buffer;
@@ -464,17 +475,30 @@ html, body { height: 100%; font-family: Arial, sans-serif; }
       s3.start(now + (half * 2));
     }
 
+    function playFallback() {
+      var now = ctx.currentTime;
+      playSineHalf(now);
+      playSineHalf(now + 0.4);
+      playSineHalf(now + 0.8);
+    }
+
     if (dangerBuffer) {
       playSequence(dangerBuffer);
     } else {
       fetch('mixkit-clear-announce-tones-2861.wav')
-        .then(function(r) { return r.arrayBuffer(); })
+        .then(function(r) { 
+          if (!r.ok) throw new Error('Fetch failed');
+          return r.arrayBuffer(); 
+        })
         .then(function(b) { return ctx.decodeAudioData(b); })
         .then(function(buffer) {
           dangerBuffer = buffer;
           playSequence(dangerBuffer);
         })
-        .catch(function(err) { console.error('Failed to play danger sound:', err); });
+        .catch(function(err) { 
+          console.error('Failed to play danger WAV, falling back to sine:', err);
+          playFallback();
+        });
     }
   }
 
