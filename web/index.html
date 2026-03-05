@@ -21,7 +21,8 @@
 * { margin: 0; padding: 0; box-sizing: border-box; }
 html, body { height: 100%; font-family: Arial, sans-serif; }
 #map { width: 100%; height: 100%; direction: ltr; }
-.leaflet-interactive:hover { fill-opacity: 0.7 !important; stroke-opacity: 1 !important; }
+.leaflet-interactive:hover, .polygon-active { fill-opacity: 0.7 !important; stroke-opacity: 1 !important; stroke-linejoin: round !important; stroke-width: 4 !important; }
+.leaflet-interactive:focus { outline: none; }
 
 #legend {
   position: fixed;
@@ -848,9 +849,14 @@ html, body { height: 100%; font-family: Arial, sans-serif; }
   function showPopup(name, marker) {
     openPopupName = name;
     openPopupMarker = marker;
+    var el = marker.getElement();
+    if (el) el.classList.add('polygon-active');
     marker.bindPopup(buildPopupHtml(name), { maxWidth: 350 })
       .openPopup()
-      .on('popupclose', function() { openPopupName = null; openPopupMarker = null; });
+      .on('popupclose', function() {
+        openPopupName = null; openPopupMarker = null;
+        if (el) el.classList.remove('polygon-active');
+      });
   }
 
   // --- Process alerts ---
