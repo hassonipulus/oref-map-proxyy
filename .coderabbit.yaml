@@ -1,0 +1,44 @@
+reviews:
+  auto_review:
+    enabled: true
+
+issue_enrichment:
+  labeling:
+    auto_apply_labels: true
+    labeling_instructions:
+      - label: bug
+        instructions: >
+          Issues reporting bugs, errors, crashes, incorrect behavior, regressions,
+          or anything not working as expected. Includes Hebrew terms like באג or תקלה.
+      - label: alert-handling
+        instructions: >
+          Changes to alert classification, adding new alert titles, alert colors
+          (red/orange/yellow/green), all-clear handling, or alert type detection.
+          Includes Hebrew alert titles like ירי רקטות וטילים, חדירת כלי טיס עוין,
+          ניתן לצאת מהמרחב המוגן, etc.
+      - label: ui
+        instructions: >
+          Map display changes, popups, timeline/slider, legend, buttons, hover
+          interactions, polygon/Voronoi rendering, mobile layout, CSS, markers,
+          fade animations, or any visual/UX changes.
+      - label: api
+        instructions: >
+          Cloudflare Workers, API proxy changes, CORS headers, polling logic,
+          middleware, redirects, endpoints, cache control, or oref.org.il API
+          integration.
+      - label: seo
+        instructions: >
+          SEO improvements, OpenGraph/OG tags, Twitter cards, canonical tags,
+          sitemap.xml, robots.txt, Google indexing, meta tags, or favicon changes.
+      - label: sound
+        instructions: >
+          Alert sounds, audio playback, siren, mute/unmute, WAV/MP3 files,
+          Web Audio API, or oscillator/tone generation.
+      - label: enhancement
+        instructions: >
+          Feature requests, improvements to existing functionality, new capabilities,
+          performance optimizations, or suggestions to make the project better.
+      - label: docs
+        instructions: >
+          Documentation updates including README, CLAUDE.md, requirements docs,
+          architecture docs, or changelog.
