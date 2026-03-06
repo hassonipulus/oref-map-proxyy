@@ -51,6 +51,7 @@ Do **not** use `cat`/`category` for classification — the same number is reused
 | `נשק לא קונבנציונלי` | Non-conventional weapon | 🔴 Red |
 | `חדירת מחבלים` | Terrorist infiltration | 🔴 Red |
 | `בדקות הקרובות צפויות להתקבל התרעות באזורך` | Early warning — Iran launch, sirens expected in ~10 min | 🟡 Yellow |
+| `על תושבי האזורים הבאים לשפר את המיקום למיגון המיטבי בקרבתך...` | Preparedness notice — improve shelter position, enter shelter if alert received | 🟡 Yellow |
 | `ירי רקטות וטילים - האירוע הסתיים` | Rocket event over | 🟢 Green (fades) |
 | `חדירת כלי טיס עוין - האירוע הסתיים` | Aircraft event over | 🟢 Green (fades) |
 | `ניתן לצאת מהמרחב המוגן` | Can leave shelter | 🟢 Green (fades) |
@@ -59,6 +60,7 @@ Do **not** use `cat`/`category` for classification — the same number is reused
 | `השוהים במרחב המוגן יכולים לצאת...` | Shelter occupants can exit | 🟢 Green (fades) |
 
 - Green titles are matched by substring (`האירוע הסתיים`, `ניתן לצאת`, `החשש הוסר`, `יכולים לצאת`) to catch variants.
+- Yellow preparedness notice is matched by substring `לשפר את המיקום למיגון המיטבי`.
 - API sometimes uses double spaces in titles — normalize with `.replace(/\s+/g, ' ')` before matching.
 - Unknown titles default to Red and log a console warning.
 
