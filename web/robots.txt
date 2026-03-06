@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://oref-map.org/sitemap.xml

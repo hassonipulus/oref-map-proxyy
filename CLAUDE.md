@@ -6,6 +6,8 @@ This file provides guidance to Claude Code when working with code in this reposi
 
 `oref-map` is a live alert map of Israel ("מפת העורף") showing colored Voronoi area polygons for alert statuses per location. It uses Leaflet + OpenStreetMap + d3-delaunay + polygon-clipping, deployed on Cloudflare Pages.
 
+**Public URL**: https://oref-map.org
+
 ## Commands
 
 ```bash
