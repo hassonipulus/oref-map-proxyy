@@ -1169,7 +1169,13 @@ html, body { height: 100%; font-family: Arial, sans-serif; }
         historyErrors = 0;
         if (isLiveMode && liveErrors <= 3) updateLiveStatus();
         if (!text) { if (onDone) onDone(); return; }
-        var entries = JSON.parse(text);
+        var entries;
+        try {
+          entries = JSON.parse(text);
+        } catch (parseErr) {
+          console.error('History JSON parse error:', parseErr, '\nRaw response:', text);
+          throw parseErr;
+        }
         if (!Array.isArray(entries)) { if (onDone) onDone(); return; }
 
         // Sort by alertDate ascending
