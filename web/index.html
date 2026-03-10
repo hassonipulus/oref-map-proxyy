@@ -1325,7 +1325,9 @@ body.has-overlay .leaflet-interactive { pointer-events: none !important; }
         try { sessionStorage.setItem('oref-last-poll', String(Date.now())); } catch(e) {}
         if (initialized && isLiveMode && historyErrors <= 3) updateLiveStatus();
         if (!text) return; // no active alert
-        var alert = JSON.parse(text);
+        var alert;
+        try { alert = JSON.parse(text); }
+        catch (e) { console.warn('Live JSON parse failed (' + text.length + ' chars), payload:', JSON.stringify(text), e); return; }
         processLiveAlert(alert);
       })
       .catch(function(err) {
