@@ -84,7 +84,7 @@ body.has-overlay .leaflet-interactive { pointer-events: none !important; }
 .indicator-green  { background: #00cc00; }
 .indicator-err    { background: #999; }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
-#lastAlertLink { color: inherit; text-decoration: underline; cursor: pointer; }
+#lastAlertLink, #zoomAlertsLink { color: inherit; text-decoration: underline; cursor: pointer; }
 
 #errorDetail {
   display: none;
@@ -1229,6 +1229,18 @@ body.has-overlay .leaflet-interactive { pointer-events: none !important; }
     return '';
   }
 
+  function zoomToActiveAlerts() {
+    var points = [];
+    for (var name in locationStates) {
+      if (locationStates[name].state !== 'green' && citiesGeo[name]) {
+        points.push(citiesGeo[name]);
+      }
+    }
+    if (points.length === 0) return;
+    var bounds = L.latLngBounds(points);
+    map.fitBounds(bounds, { padding: [50, 50], maxZoom: 12 });
+  }
+
   function updateLiveStatus() {
     if (!isLiveMode) return;
     var dominant = null, bestP = -1;
@@ -1241,7 +1253,15 @@ body.has-overlay .leaflet-interactive { pointer-events: none !important; }
       }
     }
     if (dominant) {
-      setStatus(dominant, 'התרעות פעילות');
+      setStatusHTML(dominant, '<a href="#" id="zoomAlertsLink">התרעות פעילות</a>');
+      var zoomLink = document.getElementById('zoomAlertsLink');
+      if (zoomLink) {
+        zoomLink.addEventListener('click', function(e) {
+          e.preventDefault();
+          e.stopPropagation();
+          zoomToActiveAlerts();
+        });
+      }
     } else {
       var rel = formatRelativeTime(lastDangerTime);
       if (rel) {
