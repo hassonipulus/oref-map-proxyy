@@ -37,6 +37,8 @@ html, body { height: 100%; font-family: Arial, sans-serif; }
 .leaflet-interactive:focus { outline: none; }
 body.has-overlay .leaflet-interactive { pointer-events: none !important; }
 @keyframes tapHintFade { 0%,70% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes toastFade { 0%,60% { opacity: 1; } 100% { opacity: 0; } }
+.blue-dot { display: inline-block; width: 12px; height: 12px; background: #4285F4; border: 2px solid #fff; border-radius: 50%; box-shadow: 0 0 4px rgba(66,133,244,0.5); }
 
 #legend {
   position: fixed;
@@ -506,7 +508,7 @@ body.has-overlay .leaflet-interactive { pointer-events: none !important; }
 
 <button id="location-btn" type="button" title="הצג מיקום שלי על המפה">
   <div id="location-btn-row">
-    <span class="btn-icon" style="filter:hue-rotate(230deg);">📍</span><span class="btn-text">הראה אותי</span>
+    <span class="btn-icon"><span class="blue-dot"></span></span><span class="btn-text">הראה אותי</span>
   </div>
 </button>
 
@@ -581,24 +583,54 @@ body.has-overlay .leaflet-interactive { pointer-events: none !important; }
 
   function initUserLocation() {
     var btn = document.getElementById('location-btn');
+    var btnText = btn.querySelector('.btn-text');
     if (!navigator.geolocation) { btn.style.display = 'none'; return; }
 
     var icon = L.divIcon({
-      html: '<span style="font-size:26px; line-height:1; display:block; filter:hue-rotate(230deg);">📍</span>',
+      html: '<span style="display:block;width:14px;height:14px;background:#4285F4;border:3px solid #fff;border-radius:50%;box-shadow:0 0 6px rgba(66,133,244,0.6);"></span>',
       className: '',
-      iconSize: [26, 26],
-      iconAnchor: [6, 24]
+      iconSize: [20, 20],
+      iconAnchor: [10, 10]
     });
 
-    var watching = false;
+    var watchId = null;
+
+    function setIdle() {
+      btnText.textContent = 'הראה אותי';
+      btnText.style.display = '';
+    }
+
+    function setActive() {
+      btnText.textContent = '';
+      btnText.style.display = 'none';
+    }
+
+    function setTransient(msg) {
+      btnText.style.display = '';
+      btnText.textContent = msg;
+      setTimeout(setIdle, 3000);
+    }
+
+    function showToast(msg) {
+      var el = document.createElement('div');
+      el.textContent = msg;
+      el.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.8);color:#fff;padding:10px 20px;border-radius:8px;font-size:14px;z-index:1001;direction:rtl;text-align:center;animation:toastFade 3s forwards;pointer-events:none;';
+      document.body.appendChild(el);
+      setTimeout(function() { el.remove(); }, 3000);
+    }
+
+    function stopWatching() {
+      if (watchId !== null) { navigator.geolocation.clearWatch(watchId); watchId = null; }
+      if (userLocationMarker) { map.removeLayer(userLocationMarker); userLocationMarker = null; }
+    }
 
     function startWatching() {
-      if (watching) return;
-      watching = true;
-      navigator.geolocation.watchPosition(function(pos) {
+      if (watchId !== null) return;
+      watchId = navigator.geolocation.watchPosition(function(pos) {
         var latlng = [pos.coords.latitude, pos.coords.longitude];
         if (!pointInRing(latlng, ISRAEL_CLIP_RING)) {
-          if (userLocationMarker) { map.removeLayer(userLocationMarker); userLocationMarker = null; }
+          stopWatching();
+          setTransient('בעיית GPS');
           return;
         }
         if (!userLocationMarker) {
@@ -607,28 +639,34 @@ body.has-overlay .leaflet-interactive { pointer-events: none !important; }
             interactive: false,
             zIndexOffset: 1000
           }).addTo(map);
-          btn.style.display = 'none';
         } else {
           userLocationMarker.setLatLng(latlng);
         }
+        setActive();
       }, function(err) {
         console.warn('Geolocation error:', err.code, err.message);
-        btn.querySelector('.btn-text').textContent = 'מיקום לא זמין';
+        watchId = null;
+        setTransient('מיקום לא זמין');
       }, { enableHighAccuracy: false, maximumAge: 30000 });
     }
 
     if (navigator.permissions) {
       navigator.permissions.query({ name: 'geolocation' }).then(function(result) {
         if (result.state === 'granted') {
-          btn.style.display = 'none';
           startWatching();
         }
       }).catch(function() {});
     }
 
     document.getElementById('location-btn-row').addEventListener('click', function() {
-      btn.querySelector('.btn-text').textContent = 'מאתר...';
-      startWatching();
+      if (watchId !== null || userLocationMarker) {
+        stopWatching();
+        showToast('מיקום הוסר');
+        setIdle();
+      } else {
+        setTransient('מאתר...');
+        startWatching();
+      }
     });
   }
 
