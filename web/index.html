@@ -35,6 +35,10 @@
 html, body { height: 100%; font-family: Arial, sans-serif; }
 #map { width: 100%; height: 100%; direction: ltr; }
 .leaflet-interactive:focus { outline: none; }
+.leaflet-control-zoom { border-radius: 6px !important; box-shadow: 0 1px 4px rgba(0,0,0,0.15) !important; border: none !important; }
+.leaflet-control-zoom a { border: none !important; }
+.leaflet-control-zoom a:first-child { border-radius: 6px 6px 0 0 !important; }
+.leaflet-control-zoom a:last-child { border-radius: 0 0 6px 6px !important; }
 body.has-overlay .leaflet-interactive { pointer-events: none !important; }
 @keyframes tapHintFade { 0%,70% { opacity: 1; } 100% { opacity: 0; } }
 @keyframes toastFade { 0%,60% { opacity: 1; } 100% { opacity: 0; } }
@@ -65,8 +69,8 @@ body.has-overlay .leaflet-interactive { pointer-events: none !important; }
 
 #status {
   position: fixed;
-  top: 12px;
-  right: 12px;
+  top: 80px;
+  left: 10px;
   background: rgba(255,255,255,0.92);
   border-radius: 6px;
   padding: 6px 12px;
@@ -90,8 +94,8 @@ body.has-overlay .leaflet-interactive { pointer-events: none !important; }
 #errorDetail {
   display: none;
   position: fixed;
-  top: 44px;
-  right: 12px;
+  top: 112px;
+  left: 10px;
   background: #fff;
   border: 1px solid #e00;
   border-radius: 6px;
@@ -403,14 +407,14 @@ body.has-overlay .leaflet-interactive { pointer-events: none !important; }
   }
   #legend .dot { width: 12px; height: 12px; }
   #status {
-    top: 44px;
-    right: 8px;
+    top: 80px;
+    left: 10px;
     padding: 5px 10px;
     font-size: 13px;
   }
   #errorDetail {
-    top: 74px;
-    right: 8px;
+    top: 110px;
+    left: 8px;
   }
   #sound-btn, #timeline-btn, #location-btn {
     right: 12px;
