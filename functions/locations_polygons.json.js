@@ -8,12 +8,12 @@ export async function onRequestGet(context) {
   }
   const cache = caches.default;
   const upstream = 'https://oref-polygons.pages.dev/locations_polygons.json';
-  const cacheKey = new Request(upstream);
+  const cacheKey = new Request(context.request.url);
 
   let response = await cache.match(cacheKey);
   if (response) return response;
 
-  response = await fetch(upstream, { cf: { cacheEverything: false } });
+  response = await fetch(upstream);
   if (!response.ok) {
     return new Response('Failed to load polygons', { status: 502 });
   }
