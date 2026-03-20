@@ -606,7 +606,7 @@ body.has-overlay .leaflet-interactive { pointer-events: none !important; }
   </div>
   <div id="sound-btn" title="השמעת צלילים">
   <div id="sound-btn-row">
-    <span class="btn-icon">🔇</span><span class="btn-text">ללא התראה קולית</span>
+    <span class="btn-icon">🔇</span><span class="btn-text">ללא התרעה קולית</span>
   </div>
   <div id="sound-panel">
     <p style="margin:0 0 8px; font-weight:bold; direction:rtl;">בחר מיקום לקבלת התראות קוליות:</p>
@@ -2603,7 +2603,7 @@ body.has-overlay .leaflet-interactive { pointer-events: none !important; }
 
   function updateSoundButton() {
     var icon = soundMuted ? '\uD83D\uDD07' : '\uD83D\uDD0A';
-    var text = soundMuted ? 'ללא התראה קולית' : (soundLocation === 'all' ? 'צליל מופעל' : soundLocation);
+    var text = soundMuted ? 'ללא התרעה קולית' : (soundLocation === 'all' ? 'צליל מופעל' : soundLocation);
     soundBtnRow.querySelector('.btn-icon').textContent = icon;
     soundBtnRow.querySelector('.btn-text').textContent = text;
     soundBtn.title = soundMuted ? 'השמעת צלילים' : 'צלילים: ' + (soundLocation === 'all' ? 'כל הארץ' : soundLocation);

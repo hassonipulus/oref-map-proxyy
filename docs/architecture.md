@@ -10,6 +10,8 @@ A static single-page web app showing live Pikud HaOref (Home Front Command) aler
 - **Voronoi**: d3-delaunay (v6) for polygon computation, polygon-clipping (v0.15) for clipping to Israel border
 - **API proxy (tier 1)**: Cloudflare Pages Functions (`functions/api/`) — serves TLV users directly, redirects others
 - **API proxy (tier 2)**: Cloudflare Worker (`worker/`) with placement `region = "azure:israelcentral"` — fallback for non-TLV users
+- **History storage**: Cloudflare R2 bucket (`oref-history`) with per-day JSONL files
+- **Ingestion**: Cloudflare Worker with cron trigger (`ingestion/`) — appends to R2 every 15 minutes
 - **No frameworks**: Vanilla JS, CSS
 
 ## Data Sources
@@ -30,11 +32,12 @@ A static single-page web app showing live Pikud HaOref (Home Front Command) aler
 - Reliable record of all alerts including all-clears. Used on page load to reconstruct initial state, and polled to catch all-clear events that would be missed in the live API.
 
 ### Extended History API
-- **Proxy**: `/api/alarms-history` → `https://alerts-history.oref.org.il//Shared/Ajax/GetAlarmsHistory.aspx?lang=he&mode=1`
+- **URL**: `https://alerts-history.oref.org.il//Shared/Ajax/GetAlarmsHistory.aspx?lang=he&mode=1`
 - Returns up to ~3,000 entries covering ~1–2 hours.
 - **Shape**: `{"data": "location", "alertDate": "YYYY-MM-DDTHH:MM:SS", "category_desc": "title", "rid": number, ...}`
 - `rid` is a unique ID per entry — used for deduplication.
-- Used by the timeline slider to reconstruct map state at a past point in time.
+- **Modes**: `mode=0` (all), `mode=1` (24h), `mode=2` (7d), `mode=3` (month). City filter: `city_0=<name>`. Date filtering params are broken — always returns latest entries regardless.
+- Previously proxied at `/api/alarms-history` and used directly by the timeline slider. Now superseded by the day-history API backed by R2 (see [History Storage](#history-storage) below). The proxy endpoint still exists and is used by the ingestion worker.
 
 ### Why Dual Polling?
 
@@ -46,9 +49,11 @@ The Oref APIs don't include `Access-Control-Allow-Origin`. Both the Pages Functi
 
 ### Geo-blocking / Israeli IP requirement
 
-The Oref APIs geo-block non-Israeli IPs. This was confirmed while building the `oref-logger` project: a Cloudflare Worker cron running from Zurich (`colo=ZRH`) got HTTP 403, while the same code triggered from Israel (`colo=TLV`) succeeded.
+The Oref APIs geo-block non-Israeli IPs with **HTTP 403**. This was confirmed while building the `oref-logger` project: a Cloudflare Worker cron running from Zurich (`colo=ZRH`) got HTTP 403, while the same code triggered from Israel (`colo=TLV`) succeeded.
 
 Previously, Pages Functions ran at the user's nearest Cloudflare edge. Users routed through non-Israeli edges (e.g., `FRA`, `ZRH`) got 403 errors because the proxy egressed from a non-Israeli IP.
+
+**Important**: Cloudflare Worker **cron triggers do not obey placement** — a cron-triggered worker always runs from a non-Israeli colo, regardless of `[placement]` configuration. Only fetch-triggered workers reliably run from the placed region.
 
 **Solution**: A two-tier proxy architecture:
 
@@ -73,16 +78,26 @@ Several placement strategies were tested before finding a working solution:
 
 Both the Pages Functions and the Worker use the Cloudflare Cache API (`caches.default`) with `s-maxage=1` to cache Oref responses at each edge for 1 second. This reduces redundant fetches when many clients poll simultaneously. The browser cache uses `max-age=2` (matching the previous behavior).
 
+### Unknown title detection
+
+The Pages Functions proxy (`functions/api/_proxy.js`) monitors all alert responses passing through the TLV path for unrecognized alert titles. When an unknown title is detected:
+
+1. Check a 1-hour dedup cache (via Cloudflare Cache API) to avoid repeat notifications
+2. Send a Pushover notification with the unknown title and API kind
+3. Notification failures are silently swallowed — must not affect proxy behavior
+
+This runs only on the TLV path since all Israeli traffic flows through it — the same titles are seen regardless of the user's colo.
+
 ## Alert Classification
 
 Alerts are classified by **title text** only — category numbers are unreliable (same number reused for different types across APIs). Titles are normalized with `.replace(/\s+/g, ' ')` before matching (API sometimes uses double spaces).
 
 | State | Color | Title match |
 |-------|-------|-------------|
-| Danger | Red | `ירי רקטות וטילים`, `נשק לא קונבנציונלי`, `חדירת מחבלים` |
+| Danger | Red | `ירי רקטות וטילים`, `נשק לא קונבנציונלי`, `חדירת מחבלים`, `היכנסו מייד למרחב המוגן`, `היכנסו למרחב המוגן` |
 | Danger | Purple | `חדירת כלי טיס עוין` |
-| Caution | Yellow | `בדקות הקרובות צפויות להתקבל התרעות באזורך`; substring: `לשפר את המיקום למיגון המיטבי`, `להישאר בקרבתו` |
-| All-clear | Green | Substring: `האירוע הסתיים`, `ניתן לצאת` (excluding `להישאר בקרבתו`), `החשש הוסר` |
+| Caution | Yellow | `בדקות הקרובות צפויות להתקבל התרעות באזורך`; substring: `לשפר את המיקום למיגון המיטבי`, `יש לשהות בסמיכות למרחב המוגן` |
+| All-clear | Green | Substring: `האירוע הסתיים`, `ניתן לצאת` (excluding `להישאר בקרבתו`), `החשש הוסר`, `יכולים לצאת`, `אינם צריכים לשהות`, `סיום שהייה בסמיכות` |
 | Normal | — | No alert |
 
 Unknown titles default to red and log a console warning.
@@ -115,29 +130,177 @@ All ~1,430 location coordinates from `cities_geo.json` are tessellated at startu
 - **Status indicator**: Top-right — green/red dot + "Live"/"Error"
 - **Mute toggle**: Top-right — 🔇/🔊 button, state persisted in `localStorage`
 - **Legend**: Bottom-right — color key
-- **Timeline slider**: Bottom-center — scrub through the last ~1–2 hours of history
+- **Timeline panel**: Bottom-center — date navigation + slider to scrub through any day's history
 - **About modal**: Triggered by ⓘ button or title click. Closes on backdrop click or Escape.
 - **Popups**: Click a polygon to see alert history for that location (newest first).
 
 All overlays use `position: fixed`, `z-index: 1000`, semi-transparent white backgrounds with `border-radius` and `box-shadow`. RTL layout throughout.
 
-## Timeline Slider
+## Timeline
 
-- Fetches the extended history API once when first opened.
-- Reconstructs map state at any selected past timestamp from the fetched entries.
-- While scrubbing, live polling continues in the background but doesn't affect the displayed map.
-- Dragging back to the rightmost position ("now") resumes live view.
+The timeline panel lets users scrub through alert history for any date since the war started (2026-02-28).
 
-## Alert Sounds
+### Date navigation
 
-Web Audio API oscillator-based sounds (no external files). Muted by default. Two distinct tones: one for danger alerts (red/purple), one for all-clears (green). Sounds only play after initialization (initial history reconstruction) is complete.
+Prev/next day buttons navigate between dates. Constrained to `DAY_HISTORY_MIN_DATE` (2026-02-28) through today. When viewing a past date, live polling is paused; switching back to today resumes it.
+
+### Data source
+
+The timeline fetches from `/api/day-history?date=YYYY-MM-DD` (backed by R2 storage), replacing the previous approach of fetching directly from the extended history API (which only covers the latest ~1–2 hours).
+
+### State reconstruction
+
+`reconstructStateAt(targetTime)` replays all history entries up to the target timestamp, applying the same priority-based state logic as live mode. The slider maps 0–999 to the day's time range. Transport buttons (prev/next event, play) navigate between event peaks.
+
+### Previous design
+
+The original timeline fetched the extended history API (`/api/alarms-history`) on each panel open. This limited the timeline to ~1–2 hours of recent data. The R2-backed approach gives access to the full history of the war.
+
+## History Storage
+
+The Oref extended history API only exposes the latest ~3,000 entries (~1–2 hours during active days). To preserve the full record, alerts are ingested into R2 every 15 minutes and served by date.
+
+### Architecture
+
+```
+  every 15 min (cron)
+  [Ingestion Worker] ──fetch──> [proxy1 Worker] ──fetch──> [oref API]
+                                (placement: israelcentral,
+                                 different CF account)
+         │
+         └──append──> [R2: oref-history]   (comma-per-line JSONL per day)
+
+  [Pages Function: /api/day-history] ──read──> [R2: oref-history] ──> client
+
+  [Backfill script] ──fetch directly──> [oref API]  (runs locally from Israel)
+         └──upload via wrangler CLI──> [R2: oref-history]
+```
+
+### Storage format
+
+Each day is stored as two R2 objects:
+
+- **`YYYY-MM-DD.jsonl`** — the data file, comma-per-line JSONL
+- **`YYYY-MM-DD.complete`** — empty marker; presence means the day is fully ingested
+
+Each entry occupies one line ending with `,\n`:
+
+```
+{"data":"חיפה","alertDate":"2026-03-15T14:23:00","category_desc":"ירי רקטות וטילים","rid":495134},
+{"data":"תל אביב","alertDate":"2026-03-15T14:23:01","category_desc":"ירי רקטות וטילים","rid":495135},
+```
+
+**Why comma-per-line**: The serving endpoint converts to a JSON array with no JSON parsing:
+
+```js
+'[' + text.trimEnd().slice(0, -1) + ']'
+```
+
+For an empty file this produces `'[]'` — valid JSON.
+
+### Ingestion worker (`ingestion/`)
+
+A Cloudflare Worker with a cron trigger every 15 minutes (at `:03`, `:18`, `:33`, `:48`).
+
+**Time window logic**: Each run is responsible for a fixed, non-overlapping 15-minute window derived from `event.scheduledTime` (not wall clock):
+
+```
+window = [scheduledTime - 30min,  scheduledTime - 15min)
+```
+
+Windows are contiguous — the next run's window starts exactly where the previous ended. Using `event.scheduledTime` means retries or delayed execution don't corrupt window boundaries.
+
+**Israel time conversion**: `alertDate` values from the API are in Israel time. Window bounds (UTC timestamps) are converted using `Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Jerusalem' })` for string comparison.
+
+**Processing**:
+1. Fetch from proxy1 Worker (`/api2/alarms-history`) — see [why proxy1](#why-proxy1-not-history-proxy) below
+2. Strip BOM, parse JSON (~3,000 entries, ~50KB)
+3. Filter to entries within the time window
+4. Map to 4 fields: `{ data, alertDate, category_desc, rid }`
+5. Sort by `alertDate`, group by date
+6. For each date: read existing `.jsonl` from R2, append new entries, write back
+7. At midnight crossing (`startDate < endDate`): write `.complete` marker for the completed day
+
+**Error handling**: On fetch failure after 3 retries (delays: 5s, 15s, 45s), sends a Pushover notification and aborts. R2 write failures and CPU limit crashes are **not** notified.
+
+### Day-history API (`functions/api/day-history.js`)
+
+Pages Function serving R2 data as JSON.
+
+- **Endpoint**: `GET /api/day-history?date=YYYY-MM-DD`
+- Validates date format, returns 400 if invalid
+- Reads `YYYY-MM-DD.jsonl` from R2, returns 404 if not found
+- Converts comma-per-line JSONL to JSON array
+- **Caching**: completed days (`.complete` exists) → `max-age=3600` (1 hour); ongoing days → `max-age=60` (1 minute)
+- **Local dev**: If `HISTORY_BUCKET` binding is absent, proxies to production
+
+### Backfill script (`tools/backfill_history.py`)
+
+Python script for manually filling historical data. Fetches all ~1,450 cities from the Oref API (`mode=3`, month of data per city), deduplicates by `rid`, groups by date.
+
+**Usage**:
+```bash
+uv run tools/backfill_history.py            # WAR_START..yesterday, interactive
+uv run tools/backfill_history.py --today    # merge today first (no prompt), then interactive
+```
+
+**Interactive mode** (past dates): Downloads the existing R2 file for each date, compares `rid` sets, shows a diff summary, saves both versions to `tmp/backfill-compare/`, and prompts per date.
+
+**`--today` mode**: Merges backfill data with the existing R2 file for today (union by `rid`). Uses a **cron-aware cutoff** — only includes backfill entries before the last completed cron window boundary (`:03`, `:18`, `:33`, `:48`) to avoid creating duplicates when the next cron run appends. Prints a timing summary with margin to next cron. Does not write `.complete` (day is ongoing).
+
+### Why proxy1, not history-proxy
+
+The ingestion worker was originally designed to fetch from a dedicated `history-proxy` worker on the same Cloudflare account. This failed with **Cloudflare error 1042** — workers on the same account cannot call each other via HTTP fetch.
+
+Additionally, **cron triggers do not obey worker placement** — the ingestion cron always runs from a non-Israeli colo, so it cannot call the Oref API directly (would get 403).
+
+The solution: the ingestion worker calls `proxy1.oref-proxy1.workers.dev` — a proxy worker on a **different** Cloudflare account with placement `region = "azure:israelcentral"`. Cross-account HTTP calls work fine, and the proxy1 worker runs from TLV when fetch-triggered.
+
+The `history-proxy/` directory still exists in the repo but is not deployed via CI. It was useful for manual testing with its `X-Ingest-Key` auth.
+
+### Design alternatives considered
+
+| Approach | Why rejected |
+|----------|-------------|
+| **history-proxy on same account** | Cloudflare error 1042 — same-account workers can't call each other |
+| **Ingestion calls Oref API directly** | Cron triggers ignore placement — runs from non-Israeli colo, gets 403 |
+| **Move ingestion to proxy1 account** | R2 bucket is on the Pages account; R2 bindings are per-account, can't cross |
+| **Chunk-based writes** (write each 15-min window as separate R2 object, merge at midnight) | Would eliminate the read+append+write CPU cost, but complicates serving for the current day — rejected in favor of upgrading to a paid plan |
+
+### CPU considerations
+
+The ingestion worker's read+append+write pattern means CPU usage grows throughout the day as the `.jsonl` file gets larger. On the free plan (10ms CPU limit for cron), this caused the cron to be silently disabled after repeated CPU limit violations. Upgrading to a paid Cloudflare plan (15 min CPU limit) resolved this.
 
 ## Deployment
 
 ```sh
-./web-dev                    # npx wrangler pages dev web/ — serves static files locally
-./deploy                     # npx wrangler pages deploy web/ — deploy static assets
-cd worker && npx wrangler deploy  # deploy API proxy Worker
+./web-dev                          # npx wrangler pages dev web/ — local dev server
+./deploy                           # npx wrangler pages deploy web/ — deploy static assets
+cd worker && npx wrangler deploy   # deploy API proxy Worker
+cd ingestion && npx wrangler deploy  # deploy ingestion Worker
 ```
 
-The Pages project serves static assets and Pages Functions (`/api/*`). The Worker handles `/api2/*` via a Workers route on `oref-map.org`, serving as a fallback for non-TLV users.
+GitHub Actions (`.github/workflows/deploy.yml`) deploys on push to `main`:
+
+| Job | What it deploys | Account |
+|-----|----------------|---------|
+| `deploy-pages` | Static assets + Pages Functions | Pages account |
+| `deploy-workers` | proxy1, proxy2, proxy3 Workers | Per-proxy accounts |
+| `deploy-ingestion` | Ingestion cron Worker | Pages account |
+
+The Pages project serves static assets and Pages Functions (`/api/*`). The proxy Workers handle `/api2/*` via Workers routes on `oref-map.org`, serving as fallback for non-TLV users.
+
+### Cloudflare accounts
+
+Multiple Cloudflare accounts are used to work around platform limitations:
+
+- **Pages account** — hosts the Pages project, Pages Functions, R2 bucket, and ingestion worker
+- **proxy1/proxy2/proxy3 accounts** — host the placement-pinned proxy Workers. Separate accounts avoid error 1042 and distribute request volume across free-plan limits
+
+### Secrets
+
+| Worker | Secrets |
+|--------|---------|
+| Ingestion | `PUSHOVER_USER`, `PUSHOVER_TOKEN` (error notifications) |
+| history-proxy | `INGEST_SECRET` (API key for manual access) |
+| Pages Functions | `PUSHOVER_USER`, `PUSHOVER_TOKEN` (unknown title notifications) |
