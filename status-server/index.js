@@ -117,7 +117,7 @@ const app = express();
 
 // Allow cross-origin requests from the local web-server
 app.use((req, res, next) => {
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Origin', 'https://oref-map.org');
   next();
 });
 
