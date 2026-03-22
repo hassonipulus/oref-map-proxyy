@@ -3,7 +3,8 @@ import { readFileSync } from 'fs';
 import { appendFile } from 'fs/promises';
 
 const PORT = 3001;
-const DEBUG = process.argv.includes('--debug');
+const DEBUG       = process.argv.includes('--debug');
+const LOG_HISTORY = process.argv.includes('--log-history');
 
 const OREF_HEADERS = {
   'Referer': 'https://www.oref.org.il/',
@@ -60,7 +61,40 @@ function loadDebugData() {
   };
 }
 
-const USAGE_LOG = new URL('./usage.log', import.meta.url).pathname;
+const USAGE_LOG   = new URL('./usage.log',    import.meta.url).pathname;
+const HISTORY_LOG = new URL('./history.jsonl', import.meta.url).pathname;
+
+// --- History JSONL log ---
+
+const historySeen = new Set(); // keyed by "alertDate|data"
+
+function historyKey(e) { return `${e.alertDate}|${e.data}`; }
+
+if (LOG_HISTORY) {
+  try {
+    const lines = readFileSync(HISTORY_LOG, 'utf8').split('\n').filter(Boolean);
+    for (const line of lines) {
+      try { historySeen.add(historyKey(JSON.parse(line))); } catch { /* skip malformed */ }
+    }
+    console.log(`[history-log] loaded ${historySeen.size} entries from history.jsonl`);
+  } catch (err) {
+    if (err.code !== 'ENOENT') throw err;
+  }
+}
+
+function storeNewHistory(entries) {
+  const newLines = [];
+  for (const e of entries) {
+    const k = historyKey(e);
+    if (!historySeen.has(k)) {
+      historySeen.add(k);
+      newLines.push(JSON.stringify(e));
+    }
+  }
+  if (newLines.length)
+    appendFile(HISTORY_LOG, newLines.join('\n') + '\n')
+      .catch(err => console.error('[history-log] write error:', err.message));
+}
 
 // --- In-memory cache ---
 
@@ -102,6 +136,9 @@ async function pollHistory() {
   historyInFlight = fetchOref(HISTORY_URL).then(body => {
     cache.history.body = body;
     cache.history.updatedAt = Date.now();
+    if (LOG_HISTORY) {
+      try { storeNewHistory(JSON.parse(body)); } catch { /* malformed response, skip */ }
+    }
   }).catch(err => {
     console.error('[history] poll error:', err.message);
   }).finally(() => {
