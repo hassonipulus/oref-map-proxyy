@@ -639,8 +639,11 @@ body.has-overlay .leaflet-interactive { pointer-events: none !important; }
     apiPrefix = '/api';
   }
 
+  var debugApi = new URLSearchParams(location.search).get('debugapi');
+
   function apiFetch(endpoint) {
     var url = PROXY_BASE + apiPrefix + '/' + endpoint;
+    if (debugApi) url += '?debugapi=' + encodeURIComponent(debugApi);
     var wasProxy = apiPrefix === '/api2';
 
     return fetch(url).then(function(resp) {
