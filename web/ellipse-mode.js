@@ -78,6 +78,27 @@
       return Math.round(ratio * 100) + '%';
     }
 
+    function formatPercentAsScientificFraction(percentValue, fractionDigits) {
+      if (percentValue === null || !Number.isFinite(percentValue)) return null;
+
+      var normalizedValue = percentValue / 100;
+      if (!Number.isFinite(normalizedValue)) return null;
+      if (normalizedValue === 0) return '0.' + '0'.repeat(fractionDigits || 2) + ' E+00';
+
+      var scientific = normalizedValue.toExponential(
+        Number.isFinite(fractionDigits) ? fractionDigits : 2
+      );
+      var parts = scientific.split('e');
+      if (parts.length !== 2) return scientific;
+
+      var exponent = Number(parts[1]);
+      if (!Number.isFinite(exponent)) return scientific;
+
+      var exponentSign = exponent >= 0 ? '+' : '-';
+      var exponentDigits = String(Math.abs(exponent)).padStart(2, '0');
+      return parts[0] + ' E' + exponentSign + exponentDigits;
+    }
+
     function escapeHtml(str) {
       return String(str).replace(/[&<>"']/g, function(ch) {
         return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch];
@@ -804,7 +825,10 @@
           Number.isFinite(nearestCluster.homeStripeProbability) &&
           Number.isFinite(nearestCluster.homeEllipseCircumferenceMeters) &&
           nearestCluster.homeEllipseCircumferenceMeters > 0
-            ? (nearestCluster.homeStripeProbability / nearestCluster.homeEllipseCircumferenceMeters) * 100
+            ? formatPercentAsScientificFraction(
+                (nearestCluster.homeStripeProbability / nearestCluster.homeEllipseCircumferenceMeters) * 100,
+                2
+              )
             : null;
         console.log({
           cluster: nearestCluster.label,
