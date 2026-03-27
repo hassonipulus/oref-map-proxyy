@@ -129,33 +129,6 @@
 
       ellipseVisualLayers.push(centerMarker, connectionLine, ratioLabel);
 
-      if (cluster.sourceGeometry && Number.isFinite(cluster.normalizedDistanceRatio) && cluster.normalizedDistanceRatio > 0) {
-        var detailedGeometry = buildScaledGeometry(cluster.sourceGeometry, cluster.normalizedDistanceRatio);
-        var detailedOverlay = addGeometryOverlay(detailedGeometry, {
-          color: '#1d4ed8',
-          weight: 1.5,
-          opacity: 0.9,
-          fillColor: '#1d4ed8',
-          fillOpacity: 0.03,
-          dashArray: '8 6'
-        });
-        if (detailedOverlay) ellipseVisualLayers.push(detailedOverlay);
-
-        var labelLatLng = getGeometryTopLabelLatLng(detailedGeometry);
-        var circumferenceMeters = getGeometryCircumferenceMeters(detailedGeometry);
-        if (labelLatLng && circumferenceMeters !== null) {
-          var circumferenceLabel = L.marker(labelLatLng, {
-            interactive: false,
-            icon: L.divIcon({
-              className: '',
-              html: '<div style="background:rgba(255,255,255,0.96);border:1px solid #93c5fd;border-radius:12px;padding:4px 8px;color:#1d4ed8;font:12px Arial,sans-serif;white-space:nowrap;box-shadow:0 1px 4px rgba(0,0,0,0.15);">' +
-                escapeHtml(formatDistanceMeters(circumferenceMeters)) + '</div>',
-              iconSize: null
-            })
-          }).addTo(map);
-          ellipseVisualLayers.push(circumferenceLabel);
-        }
-      }
     }
 
     function isClusterEligibleForExtendedVisual(cluster) {
@@ -188,12 +161,6 @@
       };
     }
 
-    function formatDistanceMeters(distanceMeters) {
-      if (distanceMeters === null || !Number.isFinite(distanceMeters)) return 'N/A';
-      if (distanceMeters < 1000) return Math.round(distanceMeters) + ' m';
-      return (distanceMeters / 1000).toFixed(distanceMeters < 10000 ? 1 : 0) + ' km';
-    }
-
     function getGeometryCircumferenceMeters(geometry) {
       if (!geometry) return null;
       if (geometry.type === 'circle') {
@@ -205,21 +172,6 @@
       if (!Number.isFinite(a) || !Number.isFinite(b) || a <= 0 || b <= 0) return null;
       var h = Math.pow(a - b, 2) / Math.pow(a + b, 2);
       return Math.PI * (a + b) * (1 + (3 * h) / (10 + Math.sqrt(4 - 3 * h)));
-    }
-
-    function getGeometryTopLabelLatLng(geometry) {
-      if (!geometry) return null;
-      if (geometry.type === 'circle') {
-        return L.latLng(geometry.center.lat + 0.006, geometry.center.lng);
-      }
-
-      var latlngs = buildEllipseLatLngs(geometry);
-      if (!latlngs.length) return null;
-      var topPoint = latlngs[0];
-      for (var i = 1; i < latlngs.length; i++) {
-        if (latlngs[i].lat > topPoint.lat) topPoint = latlngs[i];
-      }
-      return L.latLng(topPoint.lat + 0.004, topPoint.lng);
     }
 
     function buildRenderKey(redAlerts) {
@@ -784,7 +736,9 @@
             centerDistanceMeters: positionMetrics ? positionMetrics.centerDistanceMeters : null,
             normalizedDistanceRatio: positionMetrics ? positionMetrics.normalizedDistanceRatio : null,
             directionalRadiusMeters: null,
-            plusMinus100mProbability: null
+            plusMinus100mProbability: null,
+            dashedEllipseCircumferenceMeters: null,
+            plusMinus100mProbabilityPerCircumferenceMeter: null
           });
         }
 
@@ -841,12 +795,25 @@
         );
         nearestCluster.directionalRadiusMeters = probabilityMetrics ? probabilityMetrics.directionalRadiusMeters : null;
         nearestCluster.plusMinus100mProbability = probabilityMetrics ? probabilityMetrics.plusMinus100mProbability : null;
+        var detailedGeometry = buildScaledGeometry(
+          nearestCluster.sourceGeometry,
+          nearestCluster.normalizedDistanceRatio
+        );
+        nearestCluster.dashedEllipseCircumferenceMeters = getGeometryCircumferenceMeters(detailedGeometry);
+        nearestCluster.plusMinus100mProbabilityPerCircumferenceMeter =
+          Number.isFinite(nearestCluster.plusMinus100mProbability) &&
+          Number.isFinite(nearestCluster.dashedEllipseCircumferenceMeters) &&
+          nearestCluster.dashedEllipseCircumferenceMeters > 0
+            ? (nearestCluster.plusMinus100mProbability / nearestCluster.dashedEllipseCircumferenceMeters) * 100
+            : null;
         console.log({
           cluster: nearestCluster.label,
           normalizedDistanceRatio: nearestCluster.normalizedDistanceRatio,
           centerDistanceMeters: nearestCluster.centerDistanceMeters,
           directionalRadiusMeters: nearestCluster.directionalRadiusMeters,
-          plusMinus100mProbability: nearestCluster.plusMinus100mProbability
+          plusMinus100mProbability: nearestCluster.plusMinus100mProbability,
+          dashedEllipseCircumferenceMeters: nearestCluster.dashedEllipseCircumferenceMeters,
+          plusMinus100mProbabilityPerCircumferenceMeter: nearestCluster.plusMinus100mProbabilityPerCircumferenceMeter
         });
         drawExtendedVisual(nearestCluster, userPos);
       }).catch(function(err) {
