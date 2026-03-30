@@ -33,6 +33,41 @@ function randomTlvProxy() {
   return randomFrom(TLV_PROXY_HOSTS);
 }
 
+async function fetchOrefDirect(context, target, kind, colo) {
+  const cache = caches.default;
+  const cacheKey = new Request(context.request.url, { method: 'GET' });
+
+  const cached = await cache.match(cacheKey);
+  if (cached) {
+    const resp = new Response(cached.body, cached);
+    resp.headers.set('X-CF-Colo', colo);
+    return resp;
+  }
+
+  const resp = await fetch(target, { headers: OREF_HEADERS });
+  const body = await resp.arrayBuffer();
+
+  const response = new Response(body, {
+    status: resp.status,
+    headers: {
+      'Content-Type': resp.ok ? 'application/json; charset=utf-8' : (resp.headers.get('Content-Type') || 'text/plain'),
+      'Cache-Control': 's-maxage=1, max-age=2',
+      'X-CF-Colo': colo,
+      'X-Served-By': 'pages-function',
+    },
+  });
+
+  if (resp.ok) {
+    context.waitUntil(cache.put(cacheKey, response.clone()));
+
+    // Check for unknown titles in the background
+    const bodyText = new TextDecoder().decode(body);
+    context.waitUntil(checkAndNotifyUnknownTitles(bodyText, kind, context));
+  }
+
+  return response;
+}
+
 // --- Known title classification (mirrors client-side classifyTitle) ---
 
 function isKnownTitle(title) {
@@ -167,6 +202,11 @@ export async function orefProxy(context, { target, redirectSuffix, kind }) {
   const colo = context.request.cf?.colo || '';
   const url = new URL(context.request.url);
   const debugApi = url.searchParams.get('debugapi');
+
+  // ?debugapi=oref-direct forces a direct fetch from the Pages Function.
+  if (debugApi === 'oref-direct') {
+    return fetchOrefDirect(context, target, kind, colo);
+  }
 
   // ?debugapi=<hostname> forces redirect to that proxy (if whitelisted), even from TLV
   if (debugApi) {
