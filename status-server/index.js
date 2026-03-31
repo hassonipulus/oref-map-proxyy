@@ -52,7 +52,7 @@ function loadDebugData() {
         desc:  firstTitle,
         data:  byTitle[firstTitle].locations,
       })
-    : '\ufeff';
+    : '[]';
 
   return {
     extended: raw,
@@ -63,6 +63,7 @@ function loadDebugData() {
 
 const USAGE_LOG   = new URL('./usage.log',    import.meta.url).pathname;
 const HISTORY_LOG = new URL('./history.jsonl', import.meta.url).pathname;
+const ERROR_LOG   = new URL('./error.log',    import.meta.url).pathname;
 
 // --- History JSONL log ---
 
@@ -99,12 +100,36 @@ function storeNewHistory(entries) {
 // --- In-memory cache ---
 
 const cache = {
-  alerts:  { body: '\ufeff', updatedAt: null },  // BOM = no active alert (Oref convention)
+  alerts:  { body: '[]', updatedAt: null },
   history: { body: '[]',     updatedAt: null },
   extended: { body: '[]',    updatedAt: null, fetchedAt: null },
 };
 
 // --- Fetch helpers ---
+
+function normalizeOrefBody(body) {
+  const text = String(body)
+    .replace(/\ufeff/g, '')
+    .replace(/\u0000/g, '')
+    .trim();
+  return text || '[]';
+}
+
+function logInvalidPayload(url, body, err) {
+  const timestamp = new Date().toISOString();
+  const message = String(err?.message ?? err);
+  const entry =
+    `[${timestamp}] invalid upstream payload from ${url}\n` +
+    `error: ${message}\n` +
+    `body:\n${body}\n\n---\n`;
+  return appendFile(ERROR_LOG, entry)
+    .catch(logErr => console.error('[error-log] write error:', logErr.message));
+}
+
+function appendErrorLog(entry) {
+  return appendFile(ERROR_LOG, entry)
+    .catch(logErr => console.error('[error-log] write error:', logErr.message));
+}
 
 async function fetchOref(url) {
   const resp = await fetch(url, { headers: OREF_HEADERS });
@@ -113,13 +138,23 @@ async function fetchOref(url) {
     err.code = String(resp.status);
     throw err;
   }
-  return resp.text();
+  const body = normalizeOrefBody(await resp.text());
+  try {
+    JSON.parse(body);
+  } catch (err) {
+    await logInvalidPayload(url, body, err);
+    throw err;
+  }
+  return body;
 }
 
 function logError(prefix, err) {
+  const timestamp = new Date().toISOString();
   const code = err?.code ?? 'UNKNOWN';
   const message = String(err?.message ?? err);
-  console.error(`[${new Date().toISOString()}] ${prefix}, code=${code}, error="${message}"`);
+  const line = `[${timestamp}] ${prefix}, code=${code}, error="${message}"`;
+  console.error(line);
+  void appendErrorLog(`${line}\n`);
 }
 
 // --- Polling ---
