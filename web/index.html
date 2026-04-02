@@ -92,6 +92,14 @@ body.has-overlay .leaflet-interactive { pointer-events: none !important; }
   display: inline-block; width: 8px; height: 8px; border-radius: 50%;
   margin-left: 6px; vertical-align: middle;
 }
+#visitorCount {
+  display: none;
+  margin-top: 5px;
+  padding-top: 5px;
+  border-top: 1px solid #ddd;
+  font-size: 11px;
+  color: #555;
+}
 .indicator-red    { background: #ff0000; animation: pulse 3s ease-in-out infinite; }
 .indicator-purple { background: #9922cc; animation: pulse 3s ease-in-out infinite; }
 .indicator-yellow { background: #ffcc00; animation: pulse 3s ease-in-out infinite; }
@@ -665,6 +673,7 @@ body.idle #right-panel {
 <div id="status">
   <span class="indicator indicator-err" id="statusDot"></span>
   <span id="statusText">מתחבר...</span>
+  <div id="visitorCount"></div>
   <div id="historyTimeLabel" style="display:none; font-size:11px; color:#555; margin-top:5px; padding-top:5px; border-top:1px solid #ddd;"></div>
 </div>
 <div id="errorDetail"></div>
@@ -835,6 +844,9 @@ body.idle #right-panel {
   //   var PROXY_BASE = 'https://oref-proxy.YOUR_ACCOUNT.workers.dev';
   var PROXY_BASE = '';
   var apiPrefix = '/api'; // Pages Function; switches to '/api2' (Worker) if non-TLV
+  var PRESENCE_POLL_MS = 60000;
+  var PRESENCE_LABEL = 'מבקרים בשעה האחרונה';
+  var PRESENCE_URL = 'https://presence.oref-map.org/presence';
 
   function resetProxy() {
     PROXY_BASE = '';
@@ -863,8 +875,60 @@ body.idle #right-panel {
     });
   }
 
+  var visitorCountEl = document.getElementById('visitorCount');
+  var presenceSessionId = null;
+
+  function createPresenceSessionId() {
+    if (window.crypto && typeof window.crypto.randomUUID === 'function') {
+      return window.crypto.randomUUID();
+    }
+    return 'v-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 12);
+  }
+
+  function getPresenceSessionId() {
+    if (presenceSessionId) return presenceSessionId;
+    try {
+      presenceSessionId = sessionStorage.getItem('oref-presence-session');
+      if (!presenceSessionId) {
+        presenceSessionId = createPresenceSessionId();
+        sessionStorage.setItem('oref-presence-session', presenceSessionId);
+      }
+    } catch (e) {
+      presenceSessionId = createPresenceSessionId();
+    }
+    return presenceSessionId;
+  }
+
+  function renderVisitorCount(count) {
+    if (!visitorCountEl || !Number.isFinite(count)) return;
+    visitorCountEl.textContent = count + ' ' + PRESENCE_LABEL;
+    visitorCountEl.style.display = 'block';
+  }
+
+  function sendPresenceHeartbeat() {
+    if (!PRESENCE_URL) return Promise.resolve();
+    return fetch(PRESENCE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessionId: getPresenceSessionId() }),
+    }).then(function(resp) {
+      if (!resp.ok) throw new Error('presence request failed');
+      return resp.json();
+    }).then(function(data) {
+      if (data && typeof data.count === 'number') {
+        renderVisitorCount(data.count);
+      }
+    }).catch(function(err) {
+      console.warn('Presence heartbeat failed:', err);
+    });
+  }
+
   // Periodically reset proxy so client can re-check if direct /api works
   setInterval(resetProxy, 300000); // 5 min
+  if (PRESENCE_URL) {
+    sendPresenceHeartbeat();
+    setInterval(sendPresenceHeartbeat, PRESENCE_POLL_MS);
+  }
   var LIVE_POLL_MS = 1000;
   var HISTORY_POLL_MS = 10000;
   var GREEN_FADE_MS = 120000; // 2 minutes
