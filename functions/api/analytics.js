@@ -52,11 +52,11 @@ async function fetchVisitorCounts(accountTag, apiToken) {
         last1h: rumPageloadEventsAdaptiveGroups(
           filter: { siteTag: "${SITE_TAG}", datetime_geq: "${minus1h}" }
           limit: 1
-        ) { count }
+        ) { sum { visits } }
         last24h: rumPageloadEventsAdaptiveGroups(
           filter: { siteTag: "${SITE_TAG}", datetime_geq: "${minus24h}" }
           limit: 1
-        ) { count }
+        ) { sum { visits } }
       }
     }
   }`;
@@ -85,7 +85,7 @@ async function fetchVisitorCounts(accountTag, apiToken) {
     throw new Error('No account data returned — check CF_ACCOUNT_TAG');
   }
   return {
-    visitors_1h: account.last1h[0]?.count ?? 0,
-    visitors_24h: account.last24h[0]?.count ?? 0,
+    visitors_1h: account.last1h[0]?.sum?.visits ?? 0,
+    visitors_24h: account.last24h[0]?.sum?.visits ?? 0,
   };
 }
