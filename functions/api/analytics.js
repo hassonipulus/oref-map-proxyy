@@ -1,4 +1,4 @@
-const SITE_TAG = '8ef04aca8dff4804be044bbbd8f2da66';
+const SITE_TAG = 'ce9e2bf7c82c46b1b66eb9019a526873';
 
 export async function onRequestGet({ env }) {
   const { CF_ACCOUNT_TAG, CF_API_TOKEN } = env;
