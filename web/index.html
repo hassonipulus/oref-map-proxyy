@@ -846,31 +846,24 @@ body.idle #right-panel {
     }
   })();
 
-  // --- Debug overlay (append diagnostics to on-screen log when ?f-log / ?f-log-cookie) ---
-  var debugOverlay = null;
-  function debugLog(level, args) {
-    if (!debugOverlay) return;
-    var line = document.createElement('div');
-    line.style.color = level === 'error' ? '#f66' : (level === 'warn' ? '#fd0' : '#9ef');
-    line.textContent = '[' + level + '] ' + Array.prototype.join.call(args, ' ');
-    debugOverlay.appendChild(line);
-    debugOverlay.scrollTop = debugOverlay.scrollHeight;
-  }
-  if (FF.log || FF['log-cookie']) {
-    debugOverlay = document.createElement('div');
+  // --- Debug overlay (append console.warn/error to on-screen log when ?f-log) ---
+  if (FF.log) {
+    var debugOverlay = document.createElement('div');
     debugOverlay.id = 'debug-overlay';
     debugOverlay.style.cssText = 'position:fixed;bottom:0;left:0;right:0;max-height:30vh;overflow-y:auto;' +
       'background:rgba(0,0,0,0.85);color:#eee;font:11px/1.4 monospace;padding:6px 10px;z-index:9999;' +
       'pointer-events:auto;direction:ltr;text-align:left;';
     document.body.appendChild(debugOverlay);
-    if (FF['log-cookie']) {
-      debugLog('info', ['cookie debug enabled']);
+    var origWarn = console.warn, origError = console.error;
+    function debugLog(level, args) {
+      var line = document.createElement('div');
+      line.style.color = level === 'error' ? '#f66' : '#fd0';
+      line.textContent = '[' + level + '] ' + Array.prototype.join.call(args, ' ');
+      debugOverlay.appendChild(line);
+      debugOverlay.scrollTop = debugOverlay.scrollHeight;
     }
-    if (FF.log) {
-      var origWarn = console.warn, origError = console.error;
-      console.warn = function() { origWarn.apply(console, arguments); debugLog('warn', arguments); };
-      console.error = function() { origError.apply(console, arguments); debugLog('error', arguments); };
-    }
+    console.warn = function() { origWarn.apply(console, arguments); debugLog('warn', arguments); };
+    console.error = function() { origError.apply(console, arguments); debugLog('error', arguments); };
   }
 
   // --- Config ---
@@ -1013,25 +1006,11 @@ body.idle #right-panel {
     return parsePositionValue(decodeURIComponent(match[1]));
   }
 
-  function logStoredPositionDebug(stage, extra) {
-    if (!FF['log-cookie']) return;
-    var match = document.cookie.match(new RegExp('(?:^|; )' + STORED_POSITION_COOKIE + '=([^;]*)'));
-    var rawValue = match ? decodeURIComponent(match[1]) : '(missing)';
-    var parsed = getStoredPosition();
-    debugLog('info', [
-      stage,
-      'cookie=' + rawValue,
-      'parsed=' + (parsed ? parsed.join(',') : 'null'),
-      extra || ''
-    ]);
-  }
-
   function storePositionCookie(latlng) {
     if (!FF['store-my-position'] || !latlng) return;
     var expires = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
     document.cookie = STORED_POSITION_COOKIE + '=' + encodeURIComponent(latlng[0] + ',' + latlng[1]) +
       '; expires=' + expires.toUTCString() + '; path=/; SameSite=Lax';
-    logStoredPositionDebug('storePositionCookie', 'saved=' + latlng.join(','));
   }
 
   function getCurrentUserPosition() {
@@ -1047,7 +1026,6 @@ body.idle #right-panel {
     var gpsLabel = menuGps.querySelector('.menu-item-label');
     var urlPos = getUrlPosition();
     var storedPos = getStoredPosition();
-    logStoredPositionDebug('initUserLocation', 'urlPos=' + (urlPos ? urlPos.join(',') : 'null') + ' geolocation=' + (!!navigator.geolocation));
     if (!navigator.geolocation && !urlPos && !storedPos) { menuGps.style.display = 'none'; return; }
     var LOCATION_PREF_KEY = 'oref-show-user-location';
     var LOCATION_HIDDEN_KEY = 'oref-location-hidden';
@@ -1143,7 +1121,6 @@ body.idle #right-panel {
 
     function showStoredPositionFallback() {
       var fallback = getStoredPosition();
-      logStoredPositionDebug('showStoredPositionFallback', 'fallback=' + (fallback ? fallback.join(',') : 'null'));
       if (!fallback) return false;
       if (!showUserLocation(fallback)) return false;
       showToast('נעשה שימוש במיקום שמור');
