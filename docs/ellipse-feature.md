@@ -32,11 +32,13 @@ Programmatic entry points exposed by the controller:
 - `clearExtendedVisual()`
 - `buildUserEllipseAnalysis(userLatLng)`
 - `printEllipsesInfos()`
+- `startEllipseEditing()`
 - `isEnabled()`
 
 Global debug helper:
 
 - `window.printEllipsesInfos()`
+- `window.editEllipse()`
 
 ## Input Data
 
@@ -66,6 +68,7 @@ Ellipse mode draws up to three categories of map layers:
 - point markers for each alert location included in a rendered cluster
 - one base geometry overlay per rendered cluster
 - one optional user-relative visual for the nearest eligible cluster
+- one optional edit overlay plus drag anchors while an edit session is active
 
 The base geometry is:
 
@@ -77,6 +80,13 @@ The user-relative visual is separate from the base cluster geometry and currentl
 - a marker at the geometry center
 - a dashed line from the cluster center to the user position
 - a floating label at the midpoint showing the user's `normalizedDistanceRatio` as a percent
+
+When an edit session is active, the selected ellipse also gets:
+
+- a dashed blue edit overlay
+- a draggable center anchor
+- four draggable axis-end anchors
+- `Reset`, `OK`, and `Cancel` buttons
 
 ## Cluster Formation
 
@@ -179,6 +189,7 @@ Ellipse mode uses several in-memory caches to avoid recomputing expensive steps:
 - cluster topology per active red-alert location set
 - base geometry summaries per active render key
 - user-position-aware summaries per active render key plus user position key
+- user geometry overrides per cluster key for committed manual edits
 
 The render key includes:
 
@@ -307,6 +318,39 @@ Eligibility currently means:
 
 So the extended visual is biased toward the nearest cluster that is not too far outside the fitted geometry.
 
+## Manual Editing
+
+Manual editing is a developer-facing capability exposed only through DevTools:
+
+- run `window.editEllipse()`
+
+Selection rules:
+
+- ellipse mode must already be enabled
+- only currently displayed rendered clusters are considered
+- if multiple ellipses are displayed, the largest one by geometric area is selected
+- only ellipse geometries are editable; circles are ignored
+
+Editing behavior:
+
+- dragging the center anchor translates the whole ellipse without changing size or angle
+- dragging a major-axis end anchor rotates the major axis around the center and changes `semiMajor`
+- dragging a minor-axis end anchor rotates the minor axis around the center and changes `semiMinor`
+- the opposite end of the edited axis mirrors automatically through the center
+- the non-edited axis keeps its current length and remains perpendicular
+
+Session controls:
+
+- `Reset` restores the generated geometry captured when the edit session started and keeps editing active
+- `OK` commits the draft geometry as the active override for that cluster and exits editing mode
+- `Cancel` discards the draft geometry and exits editing mode
+
+Committed edits are kept in memory as per-cluster overrides and applied to:
+
+- base overlay rendering
+- debug info output
+- user-relative analysis and extended-visual calculations
+
 ## Console Output
 
 When an eligible cluster is selected for the extended visual, ellipse mode logs a line with:
@@ -334,7 +378,7 @@ Ellipse mode reacts to these app events:
 - `app:ready`: initialize if loaded after app startup
 - `app:stateChanged`: recompute and redraw the base overlay when displayed alert state changes
 - `app:locationChanged`: recompute the user-relative visual only
-- `app:escape`: clear the user-relative visual only
+- `app:escape`: cancel ellipse editing if active; otherwise clear the user-relative visual
 
 The base overlay and the user-relative overlay are therefore refreshed on different paths:
 
@@ -363,6 +407,7 @@ If user-relative analysis fails during extended-visual refresh:
 - missing `oref_points.json` coordinates reduce geometry quality
 - the fitted ellipse is heuristic and padded, not a statistically rigorous fit
 - only one cluster gets the user-relative overlay at a time
+- only one cluster can be edited at a time
 - the visible map label shows `normalizedDistanceRatio` only, not the probability metric
 - `getIsLiveMode()` and `getCurrentViewTime()` are wired into the module but currently unused
 

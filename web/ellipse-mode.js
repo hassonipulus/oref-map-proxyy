@@ -29,6 +29,14 @@
     var lastSummaryKey = '';
     var lastSummaryUserKey = '';
     var lastSummaries = null;
+    var ellipseOverridesByClusterKey = Object.create(null);
+    var editingSession = null;
+    var editingLayers = [];
+    var editingControl = null;
+    var suspendedMapInteractions = null;
+    var activeHandleDrag = null;
+    var editingSelectionState = null;
+    var MIN_EDIT_SEMI_AXIS_METERS = 120;
 
     function getDisplayedRedAlerts() {
       var locationStates = getLocationStates();
@@ -122,6 +130,86 @@
       ellipseVisualLayers = [];
     }
 
+    function clearEditingLayers() {
+      for (var i = 0; i < editingLayers.length; i++) {
+        if (editingLayers[i] && typeof editingLayers[i].remove === 'function') {
+          editingLayers[i].remove();
+        } else {
+          map.removeLayer(editingLayers[i]);
+        }
+      }
+      editingLayers = [];
+    }
+
+    function removeEditingControl() {
+      if (editingControl && editingControl.parentNode) {
+        editingControl.parentNode.removeChild(editingControl);
+      }
+      editingControl = null;
+    }
+
+    function setEditingTextSelectionDisabled(disabled) {
+      if (!document || !document.body) return;
+      if (disabled) {
+        if (!editingSelectionState) {
+          editingSelectionState = {
+            userSelect: document.body.style.userSelect,
+            webkitUserSelect: document.body.style.webkitUserSelect
+          };
+        }
+        document.body.style.userSelect = 'none';
+        document.body.style.webkitUserSelect = 'none';
+        return;
+      }
+
+      if (!editingSelectionState) return;
+      document.body.style.userSelect = editingSelectionState.userSelect;
+      document.body.style.webkitUserSelect = editingSelectionState.webkitUserSelect;
+      editingSelectionState = null;
+    }
+
+    function endActiveHandleDrag() {
+      if (!activeHandleDrag) return;
+      document.removeEventListener('mousemove', activeHandleDrag.onMouseMove, true);
+      document.removeEventListener('mouseup', activeHandleDrag.onMouseUp, true);
+      document.removeEventListener('touchmove', activeHandleDrag.onTouchMove, true);
+      document.removeEventListener('touchend', activeHandleDrag.onTouchEnd, true);
+      document.removeEventListener('touchcancel', activeHandleDrag.onTouchEnd, true);
+      activeHandleDrag = null;
+    }
+
+    function suspendMapInteractions() {
+      if (!map || suspendedMapInteractions) return;
+      suspendedMapInteractions = {
+        dragging: !!(map.dragging && map.dragging.enabled()),
+        touchZoom: !!(map.touchZoom && map.touchZoom.enabled()),
+        scrollWheelZoom: !!(map.scrollWheelZoom && map.scrollWheelZoom.enabled()),
+        doubleClickZoom: !!(map.doubleClickZoom && map.doubleClickZoom.enabled()),
+        boxZoom: !!(map.boxZoom && map.boxZoom.enabled()),
+        keyboard: !!(map.keyboard && map.keyboard.enabled()),
+        tap: !!(map.tap && map.tap.enabled && map.tap.enabled())
+      };
+      if (suspendedMapInteractions.dragging && map.dragging) map.dragging.disable();
+      if (suspendedMapInteractions.touchZoom && map.touchZoom) map.touchZoom.disable();
+      if (suspendedMapInteractions.scrollWheelZoom && map.scrollWheelZoom) map.scrollWheelZoom.disable();
+      if (suspendedMapInteractions.doubleClickZoom && map.doubleClickZoom) map.doubleClickZoom.disable();
+      if (suspendedMapInteractions.boxZoom && map.boxZoom) map.boxZoom.disable();
+      if (suspendedMapInteractions.keyboard && map.keyboard) map.keyboard.disable();
+      if (suspendedMapInteractions.tap && map.tap) map.tap.disable();
+    }
+
+    function resumeMapInteractions() {
+      if (!map || !suspendedMapInteractions) return;
+      if (suspendedMapInteractions.dragging && map.dragging) map.dragging.enable();
+      if (suspendedMapInteractions.touchZoom && map.touchZoom) map.touchZoom.enable();
+      if (suspendedMapInteractions.scrollWheelZoom && map.scrollWheelZoom) map.scrollWheelZoom.enable();
+      if (suspendedMapInteractions.doubleClickZoom && map.doubleClickZoom) map.doubleClickZoom.enable();
+      if (suspendedMapInteractions.boxZoom && map.boxZoom) map.boxZoom.enable();
+      if (suspendedMapInteractions.keyboard && map.keyboard) map.keyboard.enable();
+      if (suspendedMapInteractions.tap && map.tap) map.tap.enable();
+      suspendedMapInteractions = null;
+    }
+
     function drawExtendedVisual(cluster, userPos) {
       if (!cluster || !cluster.geometry || !userPos) return;
       clearExtendedVisual();
@@ -192,6 +280,30 @@
       };
     }
 
+    function cloneGeometry(geometry) {
+      if (!geometry) return null;
+      if (geometry.type === 'circle') {
+        return {
+          type: 'circle',
+          center: { lat: geometry.center.lat, lng: geometry.center.lng },
+          radiusMeters: geometry.radiusMeters
+        };
+      }
+
+      return {
+        type: 'ellipse',
+        center: { lat: geometry.center.lat, lng: geometry.center.lng },
+        centerProjected: {
+          x: geometry.centerProjected.x,
+          y: geometry.centerProjected.y
+        },
+        majorAxis: { x: geometry.majorAxis.x, y: geometry.majorAxis.y },
+        minorAxis: { x: geometry.minorAxis.x, y: geometry.minorAxis.y },
+        semiMajor: geometry.semiMajor,
+        semiMinor: geometry.semiMinor
+      };
+    }
+
     function getGeometryCircumferenceMeters(geometry) {
       if (!geometry) return null;
       if (geometry.type === 'circle') {
@@ -203,6 +315,14 @@
       if (!Number.isFinite(a) || !Number.isFinite(b) || a <= 0 || b <= 0) return null;
       var h = Math.pow(a - b, 2) / Math.pow(a + b, 2);
       return Math.PI * (a + b) * (1 + (3 * h) / (10 + Math.sqrt(4 - 3 * h)));
+    }
+
+    function getGeometryArea(geometry) {
+      if (!geometry) return 0;
+      if (geometry.type === 'circle') {
+        return Math.PI * geometry.radiusMeters * geometry.radiusMeters;
+      }
+      return Math.PI * geometry.semiMajor * geometry.semiMinor;
     }
 
     function buildRenderKey(redAlerts) {
@@ -221,6 +341,13 @@
       return redAlerts.map(function(alert) {
         return alert.location || '';
       }).sort(function(a, b) {
+        return a.localeCompare(b, 'he');
+      }).join('||');
+    }
+
+    function buildClusterKey(locations) {
+      if (!locations || !locations.length) return '';
+      return locations.slice().sort(function(a, b) {
         return a.localeCompare(b, 'he');
       }).join('||');
     }
@@ -417,6 +544,26 @@
       return latlngs;
     }
 
+    function getGeometryAxisAnchorLatLng(geometry, axisName, directionSign) {
+      if (!geometry || geometry.type !== 'ellipse') return null;
+      var axisVector = axisName === 'major' ? geometry.majorAxis : geometry.minorAxis;
+      var semiAxis = axisName === 'major' ? geometry.semiMajor : geometry.semiMinor;
+      var anchorPoint = {
+        x: geometry.centerProjected.x + axisVector.x * semiAxis * directionSign,
+        y: geometry.centerProjected.y + axisVector.y * semiAxis * directionSign
+      };
+      var latlng = unprojectEllipsePoint(anchorPoint);
+      return { lat: latlng.lat, lng: latlng.lng };
+    }
+
+    function getEffectiveGeometry(summary) {
+      if (!summary) return null;
+      if (editingSession && editingSession.clusterKey === summary.clusterKey && editingSession.draftGeometry) {
+        return editingSession.draftGeometry;
+      }
+      return ellipseOverridesByClusterKey[summary.clusterKey] || summary.sourceGeometry;
+    }
+
     function addGeometryOverlay(geometry, style, popupHtml) {
       if (!geometry) return null;
 
@@ -511,11 +658,8 @@
       return !cluster || cluster.length < MIN_ELLIPSE_CLUSTER_SIZE;
     }
 
-    function addEllipseOverlay(points) {
-      if (!points.length) return;
-
-      var geometry = buildEllipseGeometry(points);
-      if (!geometry) return;
+    function addClusterGeometryOverlay(geometry) {
+      if (!geometry) return null;
 
       var overlay = addGeometryOverlay(geometry, {
         color: '#951111',
@@ -525,6 +669,7 @@
         fillOpacity: 0.08
       });
       if (overlay) ellipseOverlays.push(overlay);
+      return overlay;
     }
 
     function polygonRings(polygon) {
@@ -744,6 +889,7 @@
         }
 
         summaries.push({
+          clusterKey: buildClusterKey(cluster.map(function(alert) { return alert.location; })),
           label: buildClusterLabel(cluster),
           locations: cluster.map(function(alert) { return alert.location; }),
           locationCount: cluster.length,
@@ -760,8 +906,12 @@
     function drawEllipseOverlays(redAlerts, pointsMap) {
       clear();
 
+      var alertDateByLocation = {};
+      for (var a = 0; a < redAlerts.length; a++) {
+        alertDateByLocation[redAlerts[a].location] = redAlerts[a].alertDate || '';
+      }
       var missing = [];
-      var clusters = buildRedAlertClusters(redAlerts);
+      var summaries = buildBaseClusterGeometrySummaries(redAlerts, pointsMap);
       var renderedClusterCount = 0;
       var icon = L.divIcon({
         className: 'ellipse-pin',
@@ -770,15 +920,13 @@
         iconAnchor: [8, 8]
       });
 
-      for (var c = 0; c < clusters.length; c++) {
-        if (shouldSkipCluster(clusters[c])) continue;
-
-        var placedPoints = [];
-        for (var i = 0; i < clusters[c].length; i++) {
-          var alert = clusters[c][i];
-          var point = pointsMap[alert.location];
+      for (var c = 0; c < summaries.length; c++) {
+        var summary = summaries[c];
+        for (var i = 0; i < summary.locations.length; i++) {
+          var location = summary.locations[i];
+          var point = pointsMap[location];
           if (!point || point.length < 2) {
-            missing.push(alert.location);
+            missing.push(location);
             continue;
           }
 
@@ -786,13 +934,18 @@
             icon: icon,
             keyboard: false
           });
-          marker.bindPopup(alert.location + (alert.alertDate ? '<br>' + alert.alertDate : ''));
+          marker.bindPopup(location + (alertDateByLocation[location] ? '<br>' + alertDateByLocation[location] : ''));
           marker.addTo(map);
           ellipseMarkers.push(marker);
-          placedPoints.push({ lat: point[0], lng: point[1] });
         }
-        addEllipseOverlay(placedPoints);
+        if (!getEffectiveGeometry(summary)) {
+          continue;
+        }
         renderedClusterCount += 1;
+        if (editingSession && editingSession.clusterKey === summary.clusterKey) {
+          continue;
+        }
+        addClusterGeometryOverlay(getEffectiveGeometry(summary));
       }
       return { missing: missing, clusterCount: renderedClusterCount };
     }
@@ -821,6 +974,7 @@
         }
 
         return {
+          clusterKey: summary.clusterKey,
           label: summary.label,
           locations: summary.locations,
           locationCount: summary.locationCount,
@@ -843,29 +997,31 @@
     }
 
     function buildClusterReportEntry(summary, userLatLng) {
-      var positionMetrics = getGeometryPositionMetrics(summary.sourceGeometry, userLatLng);
+      var effectiveGeometry = getEffectiveGeometry(summary);
+      var positionMetrics = getGeometryPositionMetrics(effectiveGeometry, userLatLng);
 
       return {
+        clusterKey: summary.clusterKey,
         label: summary.label,
         locations: summary.locations,
         locationCount: summary.locationCount,
         latestAlertDate: summary.latestAlertDate,
-        containsUser: geometryContainsLatLng(summary.sourceGeometry, userLatLng),
+        containsUser: geometryContainsLatLng(effectiveGeometry, userLatLng),
         distanceMeters: summary.distanceMeters,
-        geometry: summary.sourceGeometry ? {
-          type: summary.sourceGeometry.type,
+        geometry: effectiveGeometry ? {
+          type: effectiveGeometry.type,
           center: {
-            lat: summary.sourceGeometry.center.lat,
-            lng: summary.sourceGeometry.center.lng
+            lat: effectiveGeometry.center.lat,
+            lng: effectiveGeometry.center.lng
           },
-          widthMeters: summary.sourceGeometry.type === 'circle'
-            ? summary.sourceGeometry.radiusMeters * 2
-            : summary.sourceGeometry.semiMajor * 2,
-          heightMeters: summary.sourceGeometry.type === 'circle'
-            ? summary.sourceGeometry.radiusMeters * 2
-            : summary.sourceGeometry.semiMinor * 2
+          widthMeters: effectiveGeometry.type === 'circle'
+            ? effectiveGeometry.radiusMeters * 2
+            : effectiveGeometry.semiMajor * 2,
+          heightMeters: effectiveGeometry.type === 'circle'
+            ? effectiveGeometry.radiusMeters * 2
+            : effectiveGeometry.semiMinor * 2
         } : null,
-        sourceGeometry: summary.sourceGeometry,
+        sourceGeometry: effectiveGeometry,
         centerDistanceMeters: positionMetrics ? positionMetrics.centerDistanceMeters : null,
         normalizedDistanceRatio: positionMetrics ? positionMetrics.normalizedDistanceRatio : null,
         directionalRadiusMeters: null,
@@ -890,9 +1046,10 @@
     }
 
     function buildEllipseInfoEntry(summary) {
-      if (!summary || !summary.sourceGeometry) return null;
+      if (!summary) return null;
 
-      var geometry = summary.sourceGeometry;
+      var geometry = getEffectiveGeometry(summary);
+      if (!geometry) return null;
       if (geometry.type === 'circle') {
         return {
           locationCount: summary.locationCount,
@@ -932,6 +1089,390 @@
         var infos = summaries.map(buildEllipseInfoEntry).filter(Boolean);
         console.log(JSON.stringify(infos, null, 2));
         return infos;
+      });
+    }
+
+    function syncEditingMarkersFromDraft(activeAnchorName) {
+      if (!editingSession || !editingSession.draftGeometry || editingSession.draftGeometry.type !== 'ellipse') return;
+
+      var geometry = editingSession.draftGeometry;
+      if (editingSession.overlay) {
+        editingSession.overlay.setLatLngs(buildEllipseLatLngs(geometry));
+        if (editingSession.overlay.redraw) editingSession.overlay.redraw();
+      }
+      if (editingSession.centerMarker && activeAnchorName !== 'center') {
+        editingSession.centerMarker.setLatLng([geometry.center.lat, geometry.center.lng]);
+      }
+      if (editingSession.majorPositiveMarker && activeAnchorName !== 'majorPositive') {
+        editingSession.majorPositiveMarker.setLatLng(getGeometryAxisAnchorLatLng(geometry, 'major', 1));
+      }
+      if (editingSession.majorNegativeMarker && activeAnchorName !== 'majorNegative') {
+        editingSession.majorNegativeMarker.setLatLng(getGeometryAxisAnchorLatLng(geometry, 'major', -1));
+      }
+      if (editingSession.minorPositiveMarker && activeAnchorName !== 'minorPositive') {
+        editingSession.minorPositiveMarker.setLatLng(getGeometryAxisAnchorLatLng(geometry, 'minor', 1));
+      }
+      if (editingSession.minorNegativeMarker && activeAnchorName !== 'minorNegative') {
+        editingSession.minorNegativeMarker.setLatLng(getGeometryAxisAnchorLatLng(geometry, 'minor', -1));
+      }
+    }
+
+    function applyCenterDrag(latlng) {
+      if (!editingSession || !editingSession.draftGeometry || editingSession.draftGeometry.type !== 'ellipse') return;
+      var projected = projectEllipsePoint(latlng);
+      editingSession.draftGeometry.center = { lat: latlng.lat, lng: latlng.lng };
+      editingSession.draftGeometry.centerProjected = { x: projected.x, y: projected.y };
+      syncEditingMarkersFromDraft('center');
+    }
+
+    function applyAxisDrag(axisName, directionSign, latlng) {
+      if (!editingSession || !editingSession.draftGeometry || editingSession.draftGeometry.type !== 'ellipse') return;
+
+      var projected = projectEllipsePoint(latlng);
+      var geometry = editingSession.draftGeometry;
+      var direction = normalizeVector({
+        x: (projected.x - geometry.centerProjected.x) * directionSign,
+        y: (projected.y - geometry.centerProjected.y) * directionSign
+      }, axisName === 'major' ? geometry.majorAxis : geometry.minorAxis);
+      var distance = Math.sqrt(
+        Math.pow(projected.x - geometry.centerProjected.x, 2) +
+        Math.pow(projected.y - geometry.centerProjected.y, 2)
+      );
+      var nextSemiAxis = Math.max(distance, MIN_EDIT_SEMI_AXIS_METERS);
+
+      if (axisName === 'major') {
+        geometry.majorAxis = direction;
+        geometry.minorAxis = { x: -direction.y, y: direction.x };
+        geometry.semiMajor = nextSemiAxis;
+      } else {
+        geometry.minorAxis = direction;
+        geometry.majorAxis = { x: direction.y, y: -direction.x };
+        geometry.semiMinor = nextSemiAxis;
+      }
+
+      syncEditingMarkersFromDraft(
+        axisName + (directionSign > 0 ? 'Positive' : 'Negative')
+      );
+    }
+
+    function createEditAnchorIcon(fillColor, borderColor, size) {
+      return L.divIcon({
+        className: '',
+        html:
+          '<div style="' +
+          'width:' + size + 'px;' +
+          'height:' + size + 'px;' +
+          'border-radius:50%;' +
+          'background:' + fillColor + ';' +
+          'border:2px solid ' + borderColor + ';' +
+          'box-shadow:0 1px 6px rgba(0,0,0,0.25);' +
+          'box-sizing:border-box;' +
+          '"></div>',
+        iconSize: [size, size],
+        iconAnchor: [size / 2, size / 2]
+      });
+    }
+
+    function normalizeHandleLatLng(latlng) {
+      if (!latlng) return null;
+      if (Array.isArray(latlng) && latlng.length >= 2) {
+        return { lat: latlng[0], lng: latlng[1] };
+      }
+      if (Number.isFinite(latlng.lat) && Number.isFinite(latlng.lng)) {
+        return { lat: latlng.lat, lng: latlng.lng };
+      }
+      return null;
+    }
+
+    function createEditableHandle(latlng, iconHtml, onDrag) {
+      var mapContainer = map.getContainer();
+      var element = document.createElement('div');
+      element.style.position = 'absolute';
+      element.style.zIndex = '900';
+      element.style.cursor = 'grab';
+      element.style.pointerEvents = 'auto';
+      element.innerHTML = iconHtml || '';
+      mapContainer.appendChild(element);
+
+      var handle = {
+        _latlng: normalizeHandleLatLng(latlng),
+        setLatLng: function(nextLatLng) {
+          var normalized = normalizeHandleLatLng(nextLatLng);
+          if (!normalized) return;
+          this._latlng = normalized;
+          var point = map.latLngToContainerPoint([normalized.lat, normalized.lng]);
+          element.style.left = point.x + 'px';
+          element.style.top = point.y + 'px';
+          element.style.transform = 'translate(-50%, -50%)';
+        },
+        getLatLng: function() {
+          return { lat: this._latlng.lat, lng: this._latlng.lng };
+        },
+        remove: function() {
+          endActiveHandleDrag();
+          map.off('zoom move resize', syncPosition);
+          element.removeEventListener('mousedown', beginHandleDrag, true);
+          element.removeEventListener('touchstart', beginHandleDrag, true);
+          if (element.parentNode) element.parentNode.removeChild(element);
+        }
+      };
+
+      function pointEventToLatLng(event) {
+        var source = event.touches && event.touches.length ? event.touches[0] : event;
+        var rect = mapContainer.getBoundingClientRect();
+        var point = L.point(source.clientX - rect.left, source.clientY - rect.top);
+        return map.containerPointToLatLng(point);
+      }
+
+      function syncPosition() {
+        handle.setLatLng(handle._latlng);
+      }
+
+      function finishHandleDrag(finishEvent) {
+        element.style.cursor = 'grab';
+        if (finishEvent) {
+          finishEvent.preventDefault();
+          if (finishEvent.stopPropagation) finishEvent.stopPropagation();
+        }
+        resumeMapInteractions();
+        endActiveHandleDrag();
+      }
+
+      function moveHandleDrag(moveEvent) {
+        var nextLatLng = pointEventToLatLng(moveEvent);
+        handle.setLatLng(nextLatLng);
+        onDrag(nextLatLng);
+        moveEvent.preventDefault();
+        if (moveEvent.stopPropagation) moveEvent.stopPropagation();
+      }
+
+      function beginHandleDrag(event) {
+        if (activeHandleDrag) endActiveHandleDrag();
+        suspendMapInteractions();
+        element.style.cursor = 'grabbing';
+        activeHandleDrag = {
+          onMouseMove: moveHandleDrag,
+          onMouseUp: finishHandleDrag,
+          onTouchMove: moveHandleDrag,
+          onTouchEnd: finishHandleDrag
+        };
+        document.addEventListener('mousemove', moveHandleDrag, true);
+        document.addEventListener('mouseup', finishHandleDrag, true);
+        document.addEventListener('touchmove', moveHandleDrag, true);
+        document.addEventListener('touchend', finishHandleDrag, true);
+        document.addEventListener('touchcancel', finishHandleDrag, true);
+        event.preventDefault();
+        event.stopPropagation();
+      }
+
+      L.DomEvent.disableClickPropagation(element);
+      L.DomEvent.disableScrollPropagation(element);
+      element.addEventListener('mousedown', beginHandleDrag, true);
+      element.addEventListener('touchstart', beginHandleDrag, { capture: true, passive: false });
+      map.on('zoom move resize', syncPosition);
+      syncPosition();
+      return handle;
+    }
+
+    function createEditingMarker(latlng, icon, onDrag) {
+      var marker = createEditableHandle(
+        latlng,
+        icon && icon.options && icon.options.html ? icon.options.html : '',
+        onDrag
+      );
+      editingLayers.push(marker);
+      return marker;
+    }
+
+    function endEditingSession() {
+      endActiveHandleDrag();
+      resumeMapInteractions();
+      setEditingTextSelectionDisabled(false);
+      editingSession = null;
+      clearEditingLayers();
+      removeEditingControl();
+    }
+
+    function cancelEllipseEditing() {
+      if (!editingSession) return false;
+      endEditingSession();
+      sync(true);
+      return true;
+    }
+
+    function renderEditingControl() {
+      removeEditingControl();
+
+      var control = document.createElement('div');
+      control.style.position = 'absolute';
+      control.style.top = '16px';
+      control.style.left = '56px';
+      control.style.zIndex = '800';
+      control.style.display = 'flex';
+      control.style.gap = '8px';
+      control.style.padding = '8px';
+      control.style.borderRadius = '12px';
+      control.style.background = 'rgba(255,255,255,0.96)';
+      control.style.boxShadow = '0 2px 10px rgba(0,0,0,0.18)';
+      control.style.border = '1px solid rgba(0,0,0,0.12)';
+
+      function makeButton(label, background, textColor, onClick) {
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.textContent = label;
+        btn.style.border = 'none';
+        btn.style.borderRadius = '10px';
+        btn.style.padding = '8px 12px';
+        btn.style.font = '600 13px Arial, sans-serif';
+        btn.style.cursor = 'pointer';
+        btn.style.background = background;
+        btn.style.color = textColor;
+        btn.addEventListener('click', onClick);
+        control.appendChild(btn);
+      }
+
+      makeButton('Reset', '#e5e7eb', '#111827', function() {
+        if (!editingSession || !editingSession.baseGeometry) return;
+        editingSession.draftGeometry = cloneGeometry(editingSession.baseGeometry);
+        syncEditingMarkersFromDraft();
+      });
+      makeButton('OK', '#16a34a', '#ffffff', function() {
+        if (!editingSession || !editingSession.draftGeometry) return;
+        ellipseOverridesByClusterKey[editingSession.clusterKey] = cloneGeometry(editingSession.draftGeometry);
+        endEditingSession();
+        sync(true);
+      });
+      makeButton('Cancel', '#dc2626', '#ffffff', function() {
+        endEditingSession();
+        sync(true);
+      });
+
+      L.DomEvent.disableClickPropagation(control);
+      L.DomEvent.disableScrollPropagation(control);
+      map.getContainer().appendChild(control);
+      editingControl = control;
+    }
+
+    function renderEditingSession() {
+      clearEditingLayers();
+      removeEditingControl();
+
+      if (!editingSession || !editingSession.draftGeometry || editingSession.draftGeometry.type !== 'ellipse') return;
+
+      editingSession.overlay = addGeometryOverlay(editingSession.draftGeometry, {
+        color: '#1d4ed8',
+        weight: 2,
+        opacity: 1,
+        fillColor: '#93c5fd',
+        fillOpacity: 0.08,
+        dashArray: '8 6'
+      });
+      if (editingSession.overlay) editingLayers.push(editingSession.overlay);
+
+      editingSession.centerMarker = createEditingMarker(
+        editingSession.draftGeometry.center,
+        createEditAnchorIcon('#ffffff', '#1d4ed8', 18),
+        applyCenterDrag
+      );
+      editingSession.majorPositiveMarker = createEditingMarker(
+        getGeometryAxisAnchorLatLng(editingSession.draftGeometry, 'major', 1),
+        createEditAnchorIcon('#1d4ed8', '#ffffff', 16),
+        function(latlng) { applyAxisDrag('major', 1, latlng); }
+      );
+      editingSession.majorNegativeMarker = createEditingMarker(
+        getGeometryAxisAnchorLatLng(editingSession.draftGeometry, 'major', -1),
+        createEditAnchorIcon('#1d4ed8', '#ffffff', 16),
+        function(latlng) { applyAxisDrag('major', -1, latlng); }
+      );
+      editingSession.minorPositiveMarker = createEditingMarker(
+        getGeometryAxisAnchorLatLng(editingSession.draftGeometry, 'minor', 1),
+        createEditAnchorIcon('#7c3aed', '#ffffff', 16),
+        function(latlng) { applyAxisDrag('minor', 1, latlng); }
+      );
+      editingSession.minorNegativeMarker = createEditingMarker(
+        getGeometryAxisAnchorLatLng(editingSession.draftGeometry, 'minor', -1),
+        createEditAnchorIcon('#7c3aed', '#ffffff', 16),
+        function(latlng) { applyAxisDrag('minor', -1, latlng); }
+      );
+
+      renderEditingControl();
+    }
+
+    function syncEditingSessionSelection(summaries) {
+      if (!editingSession) return;
+      var matchingSummary = null;
+      for (var i = 0; i < summaries.length; i++) {
+        if (summaries[i].clusterKey === editingSession.clusterKey) {
+          matchingSummary = summaries[i];
+          break;
+        }
+      }
+      if (!matchingSummary || !matchingSummary.sourceGeometry || matchingSummary.sourceGeometry.type !== 'ellipse') {
+        endEditingSession();
+        return;
+      }
+      renderEditingSession();
+    }
+
+    function startEllipseEditing() {
+      if (!enabled) {
+        showToast('יש להפעיל תחילה את מצב האליפסה');
+        console.warn('Ellipse editing requires ellipse mode to be enabled.');
+        return Promise.resolve(false);
+      }
+
+      var redAlerts = getDisplayedRedAlerts();
+      if (!redAlerts.length) {
+        showToast('אין אליפסות פעילות לעריכה');
+        console.warn('No displayed red-alert clusters are available for editing.');
+        return Promise.resolve(false);
+      }
+
+      return ensureOrefPoints().then(function(pointsMap) {
+        var summaries = buildBaseClusterGeometrySummaries(redAlerts, pointsMap)
+          .filter(function(summary) {
+            var geometry = getEffectiveGeometry(summary);
+            return !!geometry && geometry.type === 'ellipse';
+          })
+          .sort(function(a, b) {
+            return getGeometryArea(getEffectiveGeometry(b)) - getGeometryArea(getEffectiveGeometry(a));
+          });
+
+        if (!summaries.length) {
+          showToast('אין אליפסה זמינה לעריכה');
+          console.warn('No ellipse geometry is available for editing.');
+          return false;
+        }
+
+        var selectedSummary = summaries[0];
+        var selectedGeometry = getEffectiveGeometry(selectedSummary);
+        if (!selectedGeometry || selectedGeometry.type !== 'ellipse' || !selectedSummary.sourceGeometry) {
+          showToast('העריכה זמינה רק לאליפסה מרובת נקודות');
+          console.warn('The selected geometry is not an editable ellipse.');
+          return false;
+        }
+
+        editingSession = {
+          clusterKey: selectedSummary.clusterKey,
+          baseGeometry: cloneGeometry(selectedSummary.sourceGeometry),
+          draftGeometry: cloneGeometry(selectedGeometry),
+          overlay: null,
+          centerMarker: null,
+          majorPositiveMarker: null,
+          majorNegativeMarker: null,
+          minorPositiveMarker: null,
+          minorNegativeMarker: null
+        };
+        suspendMapInteractions();
+        setEditingTextSelectionDisabled(true);
+        renderEditingSession();
+        sync(true);
+        showToast('עריכת האליפסה הופעלה');
+        return true;
+      }).catch(function(err) {
+        console.error('Failed to start ellipse editing:', err);
+        showToast('שגיאה בהפעלת עריכת האליפסה');
+        return false;
       });
     }
 
@@ -991,6 +1532,7 @@
 
       return ensureOrefPoints().then(function(pointsMap) {
         var summaries = buildClusterGeometrySummaries(redAlerts, pointsMap, userLatLng);
+        syncEditingSessionSelection(summaries);
         var reportClusters = summaries.map(function(summary) {
           return buildClusterReportEntry(summary, userLatLng);
         });
@@ -1025,6 +1567,7 @@
 
       return ensureOrefPoints().then(function(pointsMap) {
         var summaries = buildClusterGeometrySummaries(redAlerts, pointsMap, userPos);
+        syncEditingSessionSelection(summaries);
         var nearestCluster = null;
         for (var i = 0; i < summaries.length; i++) {
           var candidate = buildClusterReportEntry(summaries[i], userPos);
@@ -1070,6 +1613,8 @@
       }
 
       return ensureOrefPoints().then(function(pointsMap) {
+        var summaries = buildBaseClusterGeometrySummaries(redAlerts, pointsMap);
+        syncEditingSessionSelection(summaries);
         if (redAlerts.length === 0) {
           clear();
           lastRenderKey = renderKey;
@@ -1085,6 +1630,7 @@
           }
         }
       }).catch(function(err) {
+        endEditingSession();
         clear();
         lastRenderKey = '';
         console.error('Failed to load oref_points.json:', err);
@@ -1095,6 +1641,7 @@
     function setEnabled(nextEnabled, opts) {
       enabled = !!nextEnabled;
       if (!enabled) {
+        endEditingSession();
         clear();
         lastRenderKey = '';
         return Promise.resolve();
@@ -1110,6 +1657,8 @@
       clearExtendedVisual: clearExtendedVisual,
       buildUserEllipseAnalysis: buildUserEllipseAnalysis,
       printEllipsesInfos: printEllipsesInfos,
+      startEllipseEditing: startEllipseEditing,
+      cancelEllipseEditing: cancelEllipseEditing,
       isEnabled: function() { return enabled; }
     };
   }
@@ -1153,6 +1702,9 @@
     window.printEllipsesInfos = function() {
       return controller.printEllipsesInfos();
     };
+    window.editEllipse = function() {
+      return controller.startEllipseEditing();
+    };
 
     // Wire enable button: toggle on/off
     var enableBtn = document.getElementById('ellipse-enable-btn');
@@ -1171,6 +1723,7 @@
       controller.refreshExtendedVisual();
     });
     document.addEventListener('app:escape', function() {
+      if (controller.cancelEllipseEditing()) return;
       controller.clearExtendedVisual();
     });
   }
