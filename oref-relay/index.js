@@ -5,6 +5,15 @@ import { appendFile } from 'fs/promises';
 const PORT = 3001;
 const DEBUG       = process.argv.includes('--debug');
 const LOG_HISTORY = process.argv.includes('--log-history');
+const DEFAULT_ALLOWED_ORIGINS = [
+  'https://oref-map.org',
+  'http://localhost:8788',
+  'http://127.0.0.1:8788',
+];
+const ALLOWED_ORIGINS = (process.env.CORS_ALLOWED_ORIGINS || DEFAULT_ALLOWED_ORIGINS.join(','))
+  .split(',')
+  .map(origin => origin.trim())
+  .filter(Boolean);
 
 const OREF_HEADERS = {
   'Referer': 'https://www.oref.org.il/',
@@ -210,9 +219,23 @@ async function fetchExtended() {
 
 const app = express();
 
-// Allow cross-origin requests from the local web-server
+function isAllowedOrigin(origin) {
+  if (!origin) return false;
+  return ALLOWED_ORIGINS.includes(origin);
+}
+
+// Allow cross-origin requests from production and explicitly allowed local dev origins.
 app.use((req, res, next) => {
-  res.setHeader('Access-Control-Allow-Origin', 'https://oref-map.org');
+  const origin = req.headers.origin;
+  if (isAllowedOrigin(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  }
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(204);
+  }
   next();
 });
 
