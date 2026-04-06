@@ -13,7 +13,7 @@ const ALG_C_DEFAULT_OPTIONS = {
 };
 
 const ALPHA_SHAPE_MODULE_URL = 'https://esm.sh/alpha-shape@1.0.0?target=es2022';
-const OPENCV_MODULE_URL = 'https://esm.sh/@techstark/opencv-js@4.12.0-release.1?target=es2022';
+const OPENCV_SCRIPT_URL = 'https://cdn.jsdelivr.net/npm/@techstark/opencv-js@4.12.0-release.1/dist/opencv.js';
 const COASTLINE_PATH = '/israel_mediterranean_coast_0.5km.csv';
 
 let orefPointsPromise = null;
@@ -249,23 +249,91 @@ async function ensureAlphaShape() {
   return alphaShapePromise;
 }
 
+function resolveCvModuleShape(cvModule) {
+  if (cvModule && typeof cvModule.fitEllipse === 'function' && typeof cvModule.Mat === 'function') {
+    return Promise.resolve(cvModule);
+  }
+  if (cvModule instanceof Promise) {
+    return cvModule.then((resolved) => resolveCvModuleShape(resolved));
+  }
+  if (cvModule && typeof cvModule.then === 'function') {
+    return new Promise((resolve, reject) => {
+      cvModule.then(
+        (resolved) => resolve(resolveCvModuleShape(resolved)),
+        reject,
+      );
+    });
+  }
+  if (cvModule && typeof cvModule === 'object') {
+    return new Promise((resolve) => {
+      const previous = cvModule.onRuntimeInitialized;
+      cvModule.onRuntimeInitialized = () => {
+        if (typeof previous === 'function') previous();
+        resolve(cvModule);
+      };
+    });
+  }
+  return Promise.reject(new Error('Unsupported OpenCV module shape'));
+}
+
+function loadScriptOnce(url, markerAttr) {
+  const selector = `script[${markerAttr}="true"]`;
+  let script = document.querySelector(selector);
+
+  if (!script) {
+    script = document.createElement('script');
+    script.src = url;
+    script.async = true;
+    script.crossOrigin = 'anonymous';
+    script.setAttribute(markerAttr, 'true');
+    document.head.appendChild(script);
+  }
+
+  return new Promise((resolve, reject) => {
+    if (script.dataset.loaded === 'true') {
+      resolve();
+      return;
+    }
+    if (script.dataset.failed === 'true') {
+      reject(new Error('Failed to load script: ' + url));
+      return;
+    }
+
+    const cleanup = () => {
+      script.removeEventListener('load', handleLoad);
+      script.removeEventListener('error', handleError);
+    };
+    const handleLoad = () => {
+      script.dataset.loaded = 'true';
+      cleanup();
+      resolve();
+    };
+    const handleError = () => {
+      script.dataset.failed = 'true';
+      cleanup();
+      reject(new Error('Failed to load script: ' + url));
+    };
+
+    script.addEventListener('load', handleLoad);
+    script.addEventListener('error', handleError);
+  });
+}
+
 async function ensureCv() {
   if (!cvPromise) {
-    cvPromise = import(OPENCV_MODULE_URL).then(async (mod) => {
-      const cvModule = mod.default || mod;
-      if (cvModule && typeof cvModule.fitEllipse === 'function' && typeof cvModule.Mat === 'function') {
-        return cvModule;
+    cvPromise = (async function() {
+      if (typeof window === 'undefined' || typeof document === 'undefined') {
+        throw new Error('OpenCV browser loader requires window and document');
       }
-      if (cvModule instanceof Promise) {
-        return cvModule;
+
+      if (!window.cv) {
+        await loadScriptOnce(OPENCV_SCRIPT_URL, 'data-opencv-js-loader');
       }
-      if (cvModule && typeof cvModule === 'object') {
-        await new Promise((resolve) => {
-          cvModule.onRuntimeInitialized = () => resolve();
-        });
-        return cvModule;
-      }
-      throw new Error('Unsupported OpenCV module shape');
+
+      return resolveCvModuleShape(window.cv);
+    })().catch((error) => {
+      cvPromise = null;
+      throw error;
     });
   }
   return cvPromise;
