@@ -2,246 +2,260 @@
 
 ## Purpose
 
-`alg-C` is the most specialized ellipse-fitting path in the repository's offline comparison tooling.
+`alg-C` is now exposed to the web app through a Python HTTP service under:
 
-It is used by [`tools/gen_ellipses.js`](/home/tomer/projects/oref-map/tools/gen_ellipses.js#L512) to build one fitted ellipse from a set of alerted settlement points, with extra preprocessing intended to:
+- [`ellipses-server/server.py`](/home/tomer/projects/oref-map/ellipses-server/server.py#L1)
+- [`ellipses-server/ellipse_service.py`](/home/tomer/projects/oref-map/ellipses-server/ellipse_service.py#L1)
 
-- focus on the main spatial cluster
-- fit against the outer boundary rather than every point
-- avoid coastline-adjacent boundary points that can distort the result for Israel's west edge
+The current role of `alg-C` is:
 
-The implementation lives in [`tools/lib/ellipse-algorithms.js`](/home/tomer/projects/oref-map/tools/lib/ellipse-algorithms.js#L952).
+- accept a list of alerted location names
+- resolve those names through [`web/oref_points.json`](/home/tomer/projects/oref-map/web/oref_points.json)
+- fit one ellipse from the dominant cluster
+- return the result as JSON to the browser
 
-## Entry Point
+In the web UI, the feature is triggered from [`web/ellipse-mode.js`](/home/tomer/projects/oref-map/web/ellipse-mode.js#L1811).
 
-The main function is [`fitAlgC(alertedPoints, options)`](/home/tomer/projects/oref-map/tools/lib/ellipse-algorithms.js#L952).
+## Server API
 
-`alertedPoints` is an array of objects with:
+The Python server exposes:
 
-- `lat`
-- `lng`
-- optionally `name` or other metadata, though `alg-C` only depends on coordinates
+- `GET /health`
+- `POST /ellipse`
 
-The function returns:
+The routes are registered in [`create_app()`](/home/tomer/projects/oref-map/ellipses-server/server.py#L71).
 
-- `projection`
-- `clusteredPoints`
-- `boundaryPoints`
-- `filteredBoundaryPoints`
-- `candidate`
-- `metrics`
+### Request
 
-The `candidate` is either:
+`POST /ellipse` expects JSON of the form:
 
-- a projected-space ellipse with `centerX`, `centerY`, `semiMajor`, `semiMinor`, `angle`
-- or a raw-degree ellipse returned from OpenCV with `centerLat`, `centerLng`, `widthDegrees`, `heightDegrees`, `angleDegrees`
+```json
+{
+  "locations": ["תל אביב - מרכז העיר", "רמת גן - מערב"]
+}
+```
 
-## Algorithm Pipeline
+Validation behavior from [`ellipse()`](/home/tomer/projects/oref-map/ellipses-server/server.py#L39):
 
-`alg-C` runs in four stages.
+- request body must be valid JSON
+- `locations` must be an array
+- every item in `locations` must be a string
 
-### 1. Local projection
+### Success response
 
-The input lat/lng points are first mapped into a simple local meters-based projection by [`buildProjection(...)`](/home/tomer/projects/oref-map/tools/lib/ellipse-algorithms.js#L92).
+On success the server returns:
 
-This projection:
+```json
+{
+  "ok": true,
+  "ellipse": {
+    "center": {
+      "lat": 32.06,
+      "lng": 34.73
+    },
+    "axes": {
+      "major_full_degrees": 0.77,
+      "minor_full_degrees": 0.26,
+      "semi_major_degrees": 0.38,
+      "semi_minor_degrees": 0.13,
+      "semi_major_km": 36.6,
+      "semi_minor_km": 14.5
+    },
+    "angle_deg": 7.3,
+    "meta": {
+      "input_count": 136,
+      "used_count": 136,
+      "clustered_count": 136,
+      "boundary_count": 56,
+      "filtered_boundary_count": 45
+    }
+  },
+  "missing_locations": []
+}
+```
 
-- uses the average input latitude and longitude as the local origin
-- converts latitude and longitude deltas into approximate meters
-- keeps the geometry simple for clustering and distance checks
+The browser converts that response into a renderable Leaflet geometry in [`buildAlgCServiceRenderable(...)`](/home/tomer/projects/oref-map/web/ellipse-mode.js#L1710).
 
-This is not Web Mercator and not Leaflet CRS math. It is a local linear approximation centered on the current input points.
+### Error responses
 
-### 2. Main-cluster detection
+The server currently uses:
 
-The projected points are reduced to the dominant cluster by [`detectMainCluster(...)`](/home/tomer/projects/oref-map/tools/lib/ellipse-algorithms.js#L252).
+- `400` for invalid JSON or invalid `locations` payload
+- `400` for completely unknown input when no usable coordinates remain
+- `422` when too few usable points survive clustering or boundary filtering
+- `500` for unexpected server errors
 
-This step behaves like a simple DBSCAN-style density clustering pass:
+## Input Data
 
-- two points are neighbors when their squared distance is within `clusterEpsMeters^2`
-- a point is a core point when it has at least `clusterMinSamples` neighbors
-- connected core neighborhoods are expanded with breadth-first search
-- the largest cluster is retained
+The service resolves locations from:
 
-Current defaults from [`ALG_C_DEFAULT_OPTIONS`](/home/tomer/projects/oref-map/tools/lib/ellipse-algorithms.js#L45):
+- [`web/oref_points.json`](/home/tomer/projects/oref-map/web/oref_points.json)
 
-- `clusterEpsMeters: 10000`
-- `clusterMinSamples: 10`
+That file maps:
 
-If the surviving cluster is too small, `alg-C` skips the later preprocessing steps and fits directly from that reduced point set.
+- alert name -> `[lat, lng]`
 
-### 3. Boundary extraction and coastline filtering
+The service loads it once at startup in [`_load_locations(...)`](/home/tomer/projects/oref-map/ellipses-server/ellipse_service.py#L53).
 
-The outer shape of the cluster is estimated by [`buildAlphaShapeBoundaryPoints(...)`](/home/tomer/projects/oref-map/tools/lib/ellipse-algorithms.js#L302).
-
-This step:
-
-- converts the clustered points into `[lng, lat]` pairs
-- runs the `alpha-shape` npm package
-- measures each clustered point's distance to the alpha-shape edges
-- keeps only points close to the derived boundary
-
-If alpha-shape produces no usable edges, the code falls back to a convex hull.
-
-Current defaults:
-
-- `alpha: 0.1`
-- `boundaryThresholdDegrees: 0.03`
-- `minBoundaryPoints: 6`
-
-The boundary points are then filtered against a precomputed Mediterranean coastline file by [`filterPointsAwayFromCoast(...)`](/home/tomer/projects/oref-map/tools/lib/ellipse-algorithms.js#L337).
-
-That coastline data comes from:
+The coastline filter uses:
 
 - [`web/israel_mediterranean_coast_0.5km.csv`](/home/tomer/projects/oref-map/web/israel_mediterranean_coast_0.5km.csv)
 
-The filter:
+It is loaded in [`_load_coast(...)`](/home/tomer/projects/oref-map/ellipses-server/ellipse_service.py#L72).
 
-- loads the coastline once and caches it in memory
-- projects coastline samples into the same local meter space
-- computes the nearest coastline-point distance for each boundary point
-- drops boundary points whose nearest coastline distance is at or below `coastMinDistanceMeters`
+## Algorithm Pipeline
+
+The fitting logic lives in [`fit_from_names(...)`](/home/tomer/projects/oref-map/ellipses-server/ellipse_service.py#L126).
+
+The current pipeline is:
+
+1. resolve input names to coordinates
+2. keep only the main DBSCAN cluster
+3. derive boundary points with `alphashape`
+4. drop boundary points too close to the Mediterranean coastline
+5. fit an ellipse with OpenCV
+6. normalize the result and return JSON-friendly metrics
+
+## 1. Name resolution
+
+[`load_points_from_alert_names(...)`](/home/tomer/projects/oref-map/ellipses-server/ellipse_service.py#L77) converts the input location names into `[lng, lat]` pairs.
+
+Current behavior:
+
+- known names are used
+- unknown names are collected into `missing_locations`
+- the request only fails if no usable points remain at all
+
+This matches the current web integration better than the earlier strict behavior.
+
+## 2. Main-cluster detection
+
+[`_detect_main_cluster(...)`](/home/tomer/projects/oref-map/ellipses-server/ellipse_service.py#L92) runs `DBSCAN` after scaling degrees into approximate kilometers for the Israel region.
+
+Current defaults from [`EllipseOptions`](/home/tomer/projects/oref-map/ellipses-server/ellipse_service.py#L36):
+
+- `cluster_eps_km: 10.0`
+- `cluster_min_samples: 10`
+
+Only the largest non-noise cluster is retained.
+
+If the resulting cluster has fewer than `min_boundary_points`, the server returns `422`.
+
+## 3. Boundary extraction
+
+The service computes an alpha shape from the clustered points with:
+
+- [`alphashape.alphashape(...)`](https://pypi.org/project/alphashape/)
+
+Points are treated as boundary points when their distance to the alpha-shape exterior is below:
+
+- `boundary_threshold: 0.03`
+
+If no polygon exterior can be derived, the request fails with `422`.
 
 Current default:
 
-- `coastMinDistanceMeters: 4000`
+- `alpha: 0.1`
 
-If coastline rejection removes too many points, `alg-C` falls back to the unfiltered boundary set.
+## 4. Coastline filtering
 
-### 4. Ellipse fit
+[`_filter_points_away_from_coast(...)`](/home/tomer/projects/oref-map/ellipses-server/ellipse_service.py#L108) rejects boundary points that are too close to the Mediterranean coastline samples.
 
-The final fit is performed by [`fitOpenCvEllipseFromBoundary(...)`](/home/tomer/projects/oref-map/tools/lib/ellipse-algorithms.js#L412).
+Distance is approximated by:
 
-There are two paths.
+- scaling longitude by `94.6 km/degree`
+- scaling latitude by `111.2 km/degree`
+- taking the nearest sampled coastline point
 
-#### OpenCV path
+Current default:
 
-If there are at least 5 boundary points and each point still has its original source lat/lng, the function:
+- `coast_min_distance_km: 4.0`
 
-1. builds a small inline Node script
-2. imports `@techstark/opencv-js`
-3. passes the boundary points to that script over stdin
-4. creates an OpenCV `Mat`
-5. calls `cv.fitEllipse(mat)`
-6. parses the JSON result back in the parent process
+If too few filtered boundary points remain, the request fails with `422`.
 
-The output is returned in raw latitude/longitude degree space as:
+## 5. OpenCV ellipse fit
 
-- `centerLat`
-- `centerLng`
-- `widthDegrees`
-- `heightDegrees`
-- `angleDegrees`
+The final fit is performed directly in Python with:
 
-This is why `gen_ellipses.js` has special handling for `result.coordinateSpace === 'raw-degrees'` in [`buildRenderableGeometry(...)`](/home/tomer/projects/oref-map/tools/gen_ellipses.js#L86).
+- [`cv2.fitEllipse(...)`](https://docs.opencv.org/)
 
-#### Approximation fallback
+This happens in [`fit_from_names(...)`](/home/tomer/projects/oref-map/ellipses-server/ellipse_service.py#L169).
 
-If OpenCV cannot be used because there are too few points or the points do not carry source coordinates, the code falls back to [`fitProjectedEllipseFromBoundaryApprox(...)`](/home/tomer/projects/oref-map/tools/lib/ellipse-algorithms.js#L353).
+Unlike the older JS-based offline implementation, the current web-facing path:
 
-That approximation:
+- does not spawn a child Node process
+- does not import `@techstark/opencv-js`
+- does not run OpenCV in the browser
 
-- computes the centroid
-- estimates orientation from the covariance matrix
-- measures extents in the rotated basis
-- pads the semi-axes
-- enforces minimum sizes and a minimum minor/major ratio
+It uses `opencv-python` on the server instead.
 
-This fallback is deterministic and fully local to the JS codebase. It does not use OpenCV.
+## 6. Result normalization
 
-## OpenCV Library
+OpenCV returns:
 
-The package used by `alg-C` is:
+- center
+- two axis lengths
+- an angle
 
-- `@techstark/opencv-js`
+The service then:
 
-It is declared in [`package.json`](/home/tomer/projects/oref-map/package.json#L12).
+- swaps axes if needed so `major >= minor`
+- normalizes the angle to `[0, 180)`
+- derives semi-axis lengths in degrees
+- estimates semi-axis lengths in kilometers
+- returns cluster and boundary counts in `meta`
 
-This is a normal npm dependency from the application's point of view:
+This logic is implemented near the end of [`fit_from_names(...)`](/home/tomer/projects/oref-map/ellipses-server/ellipse_service.py#L169).
 
-- it is installed with npm
-- it is imported from JavaScript
-- it exposes OpenCV APIs to JS code
+## Web Integration
 
-But it should not be thought of as a handwritten pure-JavaScript geometry library.
+The browser entry point is:
 
-Instead, it is an OpenCV.js distribution, which means the OpenCV implementation is compiled for JavaScript environments and exposed through a JS loader/runtime. In practice:
+- [`window.calcEllipseAlgC`](/home/tomer/projects/oref-map/web/ellipse-mode.js#L1893)
 
-- the repository code writes ordinary Node ESM
-- the heavy ellipse fit comes from OpenCV's compiled implementation
-- Node is not linking directly to a native `.node` addon here
+That helper now:
 
-The import used by `alg-C` is embedded in the child-process script inside [`fitOpenCvEllipseFromBoundary(...)`](/home/tomer/projects/oref-map/tools/lib/ellipse-algorithms.js#L428).
+- posts to `http://127.0.0.1:8080/ellipse` by default
+- accepts an override via `options.endpoint` or `window.ELLIPSE_SERVICE_URL`
+- builds a blue overlay from the returned ellipse
 
-## Why `alg-C` Spawns a Child Node Process
+There is also direct UI wiring:
 
-The OpenCV fit is not called directly in the parent process. Instead, [`execFileSync(...)`](/home/tomer/projects/oref-map/tools/lib/ellipse-algorithms.js#L448) starts a fresh Node process and executes a short inline module.
+- double-click a red ellipse to request a blue server-fitted ellipse for that cluster at [web/ellipse-mode.js](/home/tomer/projects/oref-map/web/ellipse-mode.js#L661)
+- double-click the blue ellipse to remove it at [web/ellipse-mode.js](/home/tomer/projects/oref-map/web/ellipse-mode.js#L1770)
 
-That design gives the implementation a few practical properties:
+## CORS
 
-- OpenCV initialization is isolated to the child process
-- the input and output boundary are simple JSON
-- the parent process does not need to keep OpenCV loaded for the entire run
-- the code can handle the package's different initialization forms in one place
+Because the web app commonly runs on `http://127.0.0.1:8788` while the Python service runs on `http://127.0.0.1:8080`, the server includes explicit CORS handling in:
 
-The child script supports several `@techstark/opencv-js` loading behaviors:
+- [`build_cors_headers(...)`](/home/tomer/projects/oref-map/ellipses-server/server.py#L15)
+- [`options_handler(...)`](/home/tomer/projects/oref-map/ellipses-server/server.py#L31)
 
-- direct module object
-- promise-returning module
-- runtime-initialized module with `onRuntimeInitialized`
+Currently allowed origins are:
 
-## How `gen_ellipses.js` Uses `alg-C`
+- `http://127.0.0.1:8788`
+- `http://localhost:8788`
 
-The offline comparison tool [`tools/gen_ellipses.js`](/home/tomer/projects/oref-map/tools/gen_ellipses.js#L1) imports `fitAlgC` from the shared algorithm module and calls it in [`main()`](/home/tomer/projects/oref-map/tools/gen_ellipses.js#L493).
+## Running The Service
 
-The usage flow is:
+From the repository root:
 
-1. load the input location names from a JSON file
-2. resolve each name to coordinates from `web/oref_points.json`
-3. call `fitAlgC(alertedPoints)`
-4. convert the returned candidate into renderable Leaflet geometry
-5. render the result alongside `alg-basic`, `alg-A`, and `alg-B`
+```bash
+.venv/bin/python ellipses-server/server.py
+```
 
-For `alg-C`, the tool records these metrics in the HTML popup via [`buildMetricLines(...)`](/home/tomer/projects/oref-map/tools/gen_ellipses.js#L246):
+The default bind address is:
 
-- `clusteredCount`
-- `boundaryCount`
-- `coastRejectedCount`
-- `minCoastDistanceMeters`
-
-The actual conversion to map geometry happens in [`buildRenderableGeometry(...)`](/home/tomer/projects/oref-map/tools/gen_ellipses.js#L79).
-
-There are two render cases:
-
-- if the candidate is in projected meters, build ellipse samples in projected space and unproject them
-- if the candidate is in raw degrees, build raw-degree ellipse samples and separately estimate the axes in meters for display
-
-## Tuning Parameters
-
-The current defaults are defined in [`ALG_C_DEFAULT_OPTIONS`](/home/tomer/projects/oref-map/tools/lib/ellipse-algorithms.js#L45).
-
-- `clusterEpsMeters`: neighborhood radius for the cluster detector
-- `clusterMinSamples`: minimum neighbor count for a core point
-- `alpha`: alpha-shape aggressiveness
-- `boundaryThresholdDegrees`: how close a point must be to the alpha-shape boundary to count as a boundary point
-- `coastMinDistanceMeters`: exclusion threshold for coastline-adjacent boundary points
-- `minBoundaryPoints`: minimum count needed for boundary-based fitting
-- `minSemiMajorMeters`: lower bound used by the approximation fallback
-- `minSemiMinorMeters`: lower bound used by the approximation fallback
-- `majorPaddingMeters`: extra major-axis padding in the approximation fallback
-- `minorPaddingMeters`: extra minor-axis padding in the approximation fallback
-- `minMinorRatio`: lower bound on ellipse thickness in the approximation fallback
+- `127.0.0.1:8080`
 
 ## Limitations
 
-`alg-C` is a pragmatic fitting pipeline, not a mathematically exact enclosure or probability model.
+The current Python server is pragmatic, not mathematically exact.
 
-Known characteristics:
+Known limitations:
 
-- the cluster detection can discard small detached groups by design
-- the alpha-shape stage depends on lat/lng degree geometry, not meters
-- the coastline filter uses point-to-point nearest distance, not point-to-segment coastline distance
-- the OpenCV fit works in raw degree space, while earlier preprocessing works in local projected meters
-- the fallback approximation is a padded oriented-bounding fit, not an OpenCV ellipse fit
-
-These tradeoffs are acceptable for the comparison tool, where the goal is to generate visually plausible regional ellipses rather than formally optimal geometry.
+- the coordinate scaling constants are Israel-specific approximations
+- alpha-shape operates in degree space, not in a proper projected meter CRS
+- coastline rejection uses nearest sampled coastline points, not point-to-segment distance
+- the request can fail when too few points survive clustering or coastline filtering
+- the browser currently depends on a separate local Python service process being available

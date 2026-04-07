@@ -658,7 +658,7 @@
       return !cluster || cluster.length < MIN_ELLIPSE_CLUSTER_SIZE;
     }
 
-    function addClusterGeometryOverlay(geometry) {
+    function addClusterGeometryOverlay(geometry, summary) {
       if (!geometry) return null;
 
       var overlay = addGeometryOverlay(geometry, {
@@ -668,6 +668,15 @@
         fillColor: '#951111',
         fillOpacity: 0.08
       });
+      if (overlay && summary && Array.isArray(summary.locations) && summary.locations.length) {
+        overlay.on('dblclick', function(event) {
+          L.DomEvent.stop(event);
+          window.calcEllipseAlgC({ locations: summary.locations }).catch(function(error) {
+            console.error(error);
+            showToast('Failed to calculate server ellipse');
+          });
+        });
+      }
       if (overlay) ellipseOverlays.push(overlay);
       return overlay;
     }
@@ -945,7 +954,7 @@
         if (editingSession && editingSession.clusterKey === summary.clusterKey) {
           continue;
         }
-        addClusterGeometryOverlay(getEffectiveGeometry(summary));
+        addClusterGeometryOverlay(getEffectiveGeometry(summary), summary);
       }
       return { missing: missing, clusterCount: renderedClusterCount };
     }
@@ -1684,6 +1693,176 @@
     try { ellipseEnabled = Number(localStorage.getItem('oref-ellipse-mode')) > 0; } catch (e) {}
 
     var stub = document.getElementById('ellipse-stub');
+    var algCOverlayLayer = null;
+
+    function getDisplayedRedAlertNamesForAlgC() {
+      var locationStates = getLocationStates();
+      return Object.keys(locationStates).filter(function(name) {
+        return locationStates[name] && locationStates[name].state === 'red';
+      }).sort(function(a, b) {
+        return a.localeCompare(b, 'he');
+      });
+    }
+
+    function clearAlgCServiceOverlay() {
+      if (!algCOverlayLayer) return;
+      map.removeLayer(algCOverlayLayer);
+      algCOverlayLayer = null;
+    }
+
+    function normalizeProjectedVector(vector, fallback) {
+      var length = Math.sqrt(vector.x * vector.x + vector.y * vector.y);
+      if (!Number.isFinite(length) || length < 1e-9) return fallback;
+      return { x: vector.x / length, y: vector.y / length };
+    }
+
+    function buildAlgCServiceRenderable(ellipse) {
+      if (!ellipse || !ellipse.center || !ellipse.axes) {
+        throw new Error('calcEllipseAlgC: server response is missing ellipse geometry');
+      }
+
+      var center = L.latLng(ellipse.center.lat, ellipse.center.lng);
+      var centerProjected = map.options.crs.project(center);
+      var angleRad = ((Number(ellipse.angle_deg) || 0) * Math.PI) / 180;
+      var sampleDeltaDegrees = 0.01;
+      var sampleLatLng = L.latLng(
+        center.lat + Math.sin(angleRad) * sampleDeltaDegrees,
+        center.lng + Math.cos(angleRad) * sampleDeltaDegrees
+      );
+      var sampleProjected = map.options.crs.project(sampleLatLng);
+      var majorAxis = normalizeProjectedVector({
+        x: sampleProjected.x - centerProjected.x,
+        y: sampleProjected.y - centerProjected.y
+      }, { x: 1, y: 0 });
+      var minorAxis = { x: -majorAxis.y, y: majorAxis.x };
+      var semiMajor = Number(ellipse.axes.semi_major_km) * 1000;
+      var semiMinor = Number(ellipse.axes.semi_minor_km) * 1000;
+
+      if (!Number.isFinite(semiMajor) || !Number.isFinite(semiMinor) || semiMajor <= 0 || semiMinor <= 0) {
+        throw new Error('calcEllipseAlgC: server returned invalid semi-axis lengths');
+      }
+
+      return {
+        center: { lat: center.lat, lng: center.lng },
+        centerProjected: { x: centerProjected.x, y: centerProjected.y },
+        majorAxis: majorAxis,
+        minorAxis: minorAxis,
+        semiMajor: semiMajor,
+        semiMinor: semiMinor
+      };
+    }
+
+    function buildAlgCServiceLatLngs(renderable) {
+      var latlngs = [];
+      for (var i = 0; i < 72; i++) {
+        var theta = (Math.PI * 2 * i) / 72;
+        var x = renderable.centerProjected.x +
+          renderable.majorAxis.x * Math.cos(theta) * renderable.semiMajor +
+          renderable.minorAxis.x * Math.sin(theta) * renderable.semiMinor;
+        var y = renderable.centerProjected.y +
+          renderable.majorAxis.y * Math.cos(theta) * renderable.semiMajor +
+          renderable.minorAxis.y * Math.sin(theta) * renderable.semiMinor;
+        latlngs.push(map.options.crs.unproject(L.point(x, y)));
+      }
+      return latlngs;
+    }
+
+    function drawAlgCServiceOverlay(renderable, payload, options) {
+      clearAlgCServiceOverlay();
+
+      var layerGroup = L.layerGroup();
+      var latlngs = buildAlgCServiceLatLngs(renderable);
+      var polygon = L.polygon(latlngs, {
+        color: '#1d4ed8',
+        weight: 2,
+        opacity: 0.95,
+        fillColor: '#60a5fa',
+        fillOpacity: 0.12
+      }).addTo(layerGroup);
+
+      var centerMarker = L.circleMarker([renderable.center.lat, renderable.center.lng], {
+        radius: 5,
+        color: '#1d4ed8',
+        weight: 2,
+        fillColor: '#ffffff',
+        fillOpacity: 1
+      }).addTo(layerGroup);
+
+      function removeOnDoubleClick(event) {
+        if (event) L.DomEvent.stop(event);
+        clearAlgCServiceOverlay();
+      }
+
+      polygon.on('dblclick', removeOnDoubleClick);
+      centerMarker.on('dblclick', removeOnDoubleClick);
+
+      layerGroup.addTo(map);
+      algCOverlayLayer = layerGroup;
+
+      if (options.fitBounds !== false) {
+        map.fitBounds(L.latLngBounds(latlngs).pad(0.08));
+      }
+
+      if (options.log !== false) {
+        console.log('calcEllipseAlgC result', payload);
+      }
+    }
+
+    async function requestAlgCServiceEllipse(options) {
+      options = options || {};
+
+      var locationNames = Array.isArray(options.locations) && options.locations.length
+        ? options.locations.map(function(value) { return String(value); })
+        : getDisplayedRedAlertNamesForAlgC();
+
+      if (!locationNames.length) {
+        throw new Error('calcEllipseAlgC: no red alert locations are currently active');
+      }
+
+      var endpoint = typeof options.endpoint === 'string' && options.endpoint
+        ? options.endpoint
+        : (window.ELLIPSE_SERVICE_URL || 'http://127.0.0.1:8080/ellipse');
+
+      var response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ locations: locationNames })
+      });
+
+      var data = null;
+      try {
+        data = await response.json();
+      } catch (error) {
+        throw new Error('calcEllipseAlgC: ellipse service returned non-JSON response');
+      }
+
+      if (!response.ok || !data || data.ok !== true || !data.ellipse) {
+        throw new Error(
+          'calcEllipseAlgC: ellipse service request failed' +
+          (data && data.error ? ': ' + data.error : ' (HTTP ' + response.status + ')')
+        );
+      }
+
+      var renderable = buildAlgCServiceRenderable(data.ellipse);
+      var payload = {
+        inputLocations: locationNames,
+        missingLocations: Array.isArray(data.missing_locations) ? data.missing_locations : [],
+        alertedPointCount: data.ellipse.meta && Number.isFinite(data.ellipse.meta.input_count)
+          ? data.ellipse.meta.input_count
+          : locationNames.length,
+        ellipse: data.ellipse,
+        renderable: renderable,
+        serviceUrl: endpoint
+      };
+
+      if (options.draw !== false) {
+        drawAlgCServiceOverlay(renderable, payload, options);
+      } else if (options.log !== false) {
+        console.log('calcEllipseAlgC result', payload);
+      }
+
+      return payload;
+    }
 
     function setEnabled(on, opts) {
       ellipseEnabled = on;
@@ -1705,9 +1884,14 @@
     window.editEllipse = function() {
       return controller.startEllipseEditing();
     };
-    window.calcEllipseAlgC = async function(options) {
-      var mod = await import('/ellipse-alg-c.js');
-      return mod.calcEllipseAlgC(options || {});
+    window.clearAlgCOverlay = function() {
+      clearAlgCServiceOverlay();
+    };
+    window.clearEllipseAlgCOverlay = function() {
+      clearAlgCServiceOverlay();
+    };
+    window.calcEllipseAlgC = function(options) {
+      return requestAlgCServiceEllipse(options);
     };
 
     // Wire enable button: toggle on/off
