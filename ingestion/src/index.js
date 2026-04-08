@@ -145,7 +145,7 @@ export default {
       );
       if (!resp.ok) {
         const body = await resp.text().catch(() => '');
-        console.error(`Error Fetch URL: ${env.HISTORY_PROXY_URL}/api2/alarms-history`)
+        console.error(`Error Fetch URL: ${env.HISTORY_PROXY_URL}/api2/alarms-history`);
         console.error(`FETCH failed: HTTP ${resp.status}: ${body.slice(0, 200)}`);
         return;
       }
