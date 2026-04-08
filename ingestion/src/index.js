@@ -145,7 +145,7 @@ export default {
       );
       if (!resp.ok) {
         const body = await resp.text().catch(() => '');
-        console.error(`Fetch failed: HTTP ${resp.status}: ${body.slice(0, 200)}`);
+        console.error(`FETCH failed: HTTP ${resp.status}: ${body.slice(0, 200)}`);
         return;
       }
       const text = (await resp.text()).replace(/^\ufeff/, '');
@@ -153,7 +153,7 @@ export default {
       const dates = entries.map(e => e.alertDate).filter(Boolean).sort();
       console.log(`Fetched ${entries.length} entries, API range: ${dates[0] || 'n/a'} – ${dates[dates.length - 1] || 'n/a'}`);
     } catch (e) {
-      console.error(`Fetch failed: ${e.message}`);
+      console.error(`Fetch exception: ${e.message}`);
       return;
     }
 
