@@ -387,6 +387,9 @@
 
         predictionFeatures = newFeatures;
         updatePredictionSource();
+      }).catch(function(err) {
+        clearPredictionLines();
+        console.error('Prediction update failed:', err);
       });
     }
 
@@ -449,7 +452,10 @@
     if (map.loaded()) {
       setupLayers();
     } else {
-      map.once('load', setupLayers);
+      map.once('load', function() {
+        setupLayers();
+        if (enabled) sync();
+      });
     }
 
     // Wire up menu toggle in #ext-menu
