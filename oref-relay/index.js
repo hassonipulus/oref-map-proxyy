@@ -9,6 +9,7 @@ const DEFAULT_ALLOWED_ORIGINS = [
   'https://oref-map.org',
   'http://localhost:8788',
   'http://127.0.0.1:8788',
+  'http://dev.local:8788',
 ];
 const ALLOWED_ORIGINS = (process.env.CORS_ALLOWED_ORIGINS || DEFAULT_ALLOWED_ORIGINS.join(','))
   .split(',')
