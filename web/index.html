@@ -1176,26 +1176,24 @@ try {
   }
 
   function apiFetch(endpoint) {
-    var url = PROXY_BASE + apiPrefix + '/' + endpoint;
-    if (FF.debugapi) url += '?debugapi=' + encodeURIComponent(FF.debugapi);
-    var wasProxy = apiPrefix === '/api2';
-
-    return fetch(url).then(function(resp) {
-      if (!resp.ok && wasProxy) { resetProxy(); }
-      return resp;
-    }, function(err) {
-      if (wasProxy) { resetProxy(); }
-      return Promise.reject(err);
-    }).then(function(resp) {
-      if (apiPrefix === '/api' && resp.url && resp.url.indexOf('/api2/') !== -1) {
-        var u = new URL(resp.url);
-        PROXY_BASE = u.origin !== location.origin ? u.origin : '';
-        console.log('Non-TLV colo detected, switching to ' + PROXY_BASE + '/api2');
-        apiPrefix = '/api2';
-      }
-      return resp;
+    // Map internal shorthand endpoints to the official Oref paths
+    var directPaths = {
+        'alerts': 'alert/alerts.json',
+        'history': 'History/Web/History.json'
+    };
+    
+    var orefPath = directPaths[endpoint] || endpoint;
+    var url = 'https://www.oref.org.il/WarningMessages/' + orefPath;
+    
+    return fetch(url, {
+        method: 'GET',
+        headers: {
+            'Accept': '*/*',
+            'X-Requested-With': 'XMLHttpRequest'
+        },
+        cache: 'no-store'
     });
-  }
+}
 
   var lastVisitors24h = null;
 
