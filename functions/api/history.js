@@ -48,4 +48,6 @@ export async function onRequest(context) {
                 "Content-Type": "application/json",
                 "Access-Control-Allow-Origin": "*"
             }
-        }
+        });
+    }
+}
