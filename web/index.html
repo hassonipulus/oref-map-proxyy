@@ -1165,38 +1165,44 @@ try {
   // --- Config ---
   // Set PROXY_BASE to the Cloudflare Worker URL for production, e.g.:
   //   var PROXY_BASE = 'https://oref-proxy.YOUR_ACCOUNT.workers.dev';
-  var PROXY_BASE = 'https://oref-proxy.xanagis.workers.dev';
-  var apiPrefix = '/api'; // Pages Function; switches to '/api2' (Worker) if non-TLV
   var ANALYTICS_POLL_MS = 30000;
   var ANALYTICS_URL = '/api/analytics';
+  
+  // 1. Point this directly to your new Israeli VPS or custom domain
+// Example: 'http://11.22.33.44:8080' or 'https://api.your-domain.com'
+var PROXY_BASE = 'https://oref-proxy.xanagis.workers.dev'; 
 
-  function resetProxy() {
-    PROXY_BASE = 'https://oref-proxy.xanagis.workers.dev';
-    apiPrefix = '/api';
-  }
+// 2. Adjust this if your custom proxy uses a different route path (or leave empty if it handles endpoints at the root)
+var apiPrefix = '/api'; 
 
-  function apiFetch(endpoint) {
-    // 1. Point straight to the proxy we just built
-    var url = PROXY_BASE + '/api/' + endpoint;
+function apiFetch(endpoint) {
+    // Construct the URL to your own server
+    var url = PROXY_BASE + apiPrefix + '/' + endpoint;
     
-    // 2. Keep the debug flag functionality
-    if (FF && FF.debugapi) {
+    // Maintain the debug flag feature
+    if (typeof FF !== 'undefined' && FF.debugapi) {
         url += '?debugapi=' + encodeURIComponent(FF.debugapi);
     }
 
-    // 3. Fetch without any api2 failover logic
-    return fetch(url).then(function(resp) {
-        if (!resp.ok) {
-            console.error("Proxy failed with status:", resp.status);
-            // We return the response anyway so the rest of your app can handle the error gracefully
-        }
-        return resp;
-    }).catch(function(err) {
-        console.error("Network or CORS error hitting the proxy:", err);
-        return Promise.reject(err);
-    });
+    return fetch(url)
+        .then(function(resp) {
+            if (!resp.ok) {
+                console.error("Custom proxy failed with status:", resp.status);
+                // Graceful fail: Return an empty payload so the map UI doesn't crash
+                return { json: () => Promise.resolve([]) }; 
+            }
+            return resp;
+        })
+        .catch(function(err) {
+            console.error("Network error reaching custom proxy:", err);
+            // Graceful fail: Return an empty payload
+            return { json: () => Promise.resolve([]) }; 
+        });
 }
-
+  function resetProxy() {
+    PROXY_BASE = 'https://oref-proxy.xanagis.workers.dev';
+    apiPrefix = '/api';
+}
 
   var lastVisitors24h = null;
 
