@@ -1200,7 +1200,73 @@ try {
         });
 }
 
-  
+  ‎
+Original file line number	Diff line number	Diff line change
+@@ -1176,49 +1176,30 @@ <h2><img src="/logo-text.png" srcset="/logo-text.png 1x, /logo-text@2x.png 2x" h
+  }
+
+  function apiFetch(endpoint) {
+    // 1. Point straight to the proxy we just built
+    var url = PROXY_BASE + '/api/' + endpoint;
+    
+    // 2. Keep the debug flag functionality
+    if (FF && FF.debugapi) {
+        url += '?debugapi=' + encodeURIComponent(FF.debugapi);
+    }
+    // 3. Fetch without any api2 failover logic
+    return fetch(url).then(function(resp) {
+        if (!resp.ok) {
+            console.error("Proxy failed with status:", resp.status);
+            // We return the response anyway so the rest of your app can handle the error gracefully
+        }
+        return resp;
+    }).catch(function(err) {
+        console.error("Network or CORS error hitting the proxy:", err);
+        return Promise.reject(err);
+    });
+    var url = PROXY_BASE + apiPrefix + '/' + endpoint;
+    if (FF.debugapi) url += '?debugapi=' + encodeURIComponent(FF.debugapi);
+    // Notice we use 'manual' redirect mode. 
+    // If the Cloudflare Worker tries to redirect us to orefproxy5, 
+    // the browser will refuse to follow it and immediately throw an error.
+    return fetch(url, { redirect: 'manual' })
+        .then(function(resp) {
+            // Type 'opaqueredirect' means the server tried to redirect us and we blocked it
+            if (resp.type === 'opaqueredirect') {
+                console.error("Blocked unwanted redirect to external proxy.");
+                throw new Error("Worker attempted to redirect to fallback.");
+            }
+            if (!resp.ok) {
+                console.error("Proxy failed:", resp.status);
+            }
+            return resp;
+        })
+        .catch(function(err) {
+            console.error("Fetch aborted:", err);
+            return Promise.reject(err);
+        });
+}
+
+  var lastVisitors24h = null;
+  function fetchAnalytics() {
+    return fetch(ANALYTICS_URL).then(function(resp) {
+      if (!resp.ok) throw new Error('analytics request failed');
+      return resp.json();
+    }).then(function(data) {
+      if (data && typeof data.visitors_24h === 'number') {
+        lastVisitors24h = data.visitors_24h;
+      }
+      if (data && typeof data.visitors_1h === 'number') {
+        var el = document.getElementById('menu-visitors-count');
+        if (el) {
+          el.textContent = data.visitors_1h.toLocaleString('he-IL') + ' 👥';
+          el.closest('.menu-item').style.display = '';
+        }
+      }
+    }).catch(function(err) {
+      console.warn('Analytics fetch failed:', err);
+    });
+  }
   var analyticsTimer = null;
   function startAnalyticsPolling() {
     if (analyticsTimer) return;
