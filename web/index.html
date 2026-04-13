@@ -1187,7 +1187,9 @@ try {
     
     // 2. Prepend a public CORS proxy
     // corsproxy.io simply forwards the request and injects the missing CORS headers
-    var proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(targetUrl);
+    // Using allorigins as a temporary alternative
+    var proxyUrl = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(targetUrl);
+
     
     return fetch(proxyUrl, {
         method: 'GET',
