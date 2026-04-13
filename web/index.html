@@ -1176,34 +1176,27 @@ try {
   }
 
   function apiFetch(endpoint) {
-    // 1. Construct the URL to your Cloudflare proxy
-    var url = PROXY_BASE + apiPrefix + '/' + endpoint;
+    // 1. Point straight to the proxy we just built
+    var url = PROXY_BASE + '/api/' + endpoint;
     
-    // 2. Append the debugapi flag if it exists
-    if (FF.debugapi) url += '?debugapi=' + encodeURIComponent(FF.debugapi);
-    
-    var wasProxy = apiPrefix === '/api2';
+    // 2. Keep the debug flag functionality
+    if (FF && FF.debugapi) {
+        url += '?debugapi=' + encodeURIComponent(FF.debugapi);
+    }
 
+    // 3. Fetch without any api2 failover logic
     return fetch(url).then(function(resp) {
-        // 3. Failover trigger on bad response
-        if (!resp.ok && wasProxy) { resetProxy(); }
-        return resp;
-    }, function(err) {
-        // 4. Failover trigger on network error
-        if (wasProxy) { resetProxy(); }
-        return Promise.reject(err);
-    }).then(function(resp) {
-        // 5. Detect if the request hit a non-Israel Cloudflare colocation
-        // and switch to the backup /api2 route if necessary
-        if (apiPrefix === '/api' && resp.url && resp.url.indexOf('/api2/') !== -1) {
-            var u = new URL(resp.url);
-            PROXY_BASE = u.origin !== location.origin ? u.origin : '';
-            console.log('Non-TLV colo detected, switching to ' + PROXY_BASE + '/api2');
-            apiPrefix = '/api2';
+        if (!resp.ok) {
+            console.error("Proxy failed with status:", resp.status);
+            // We return the response anyway so the rest of your app can handle the error gracefully
         }
         return resp;
+    }).catch(function(err) {
+        console.error("Network or CORS error hitting the proxy:", err);
+        return Promise.reject(err);
     });
 }
+
 
   var lastVisitors24h = null;
 
