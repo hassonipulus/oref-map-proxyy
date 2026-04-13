@@ -3,5 +3,4 @@
 # Requires wrangler authentication: npx wrangler login
 set -e
 cd "$(dirname "$0")"
-npx wrangler pages project create oref-map --production-branch main
 npx wrangler pages deploy web --project-name=oref-map 
