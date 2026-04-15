@@ -9,23 +9,15 @@
 <link rel="manifest" href="/manifest.json">
 <link rel="apple-touch-icon" href="/icon-180.png">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="מפת העורף">
-<title>מפת העורף - מפת התרעות פיקוד העורף</title>
-<link rel="canonical" href="https://oref-map.org/">
-<meta name="description" content="מפת העורף - מפת התרעות פיקוד העורף בזמן אמת">
-<meta property="og:title" content="מפת העורף">
+<meta name="apple-mobile-web-app-title" content="מפת התגוננות">
+<title>התרעות פיקוד העורף בזמן אמת</title>
+<link rel="canonical" href="https://alprazolam.cfd/">
+<meta name="description" content="מפת התרעות פיקוד העורף בזמן אמת">
+<meta property="og:title" content="מפת התגוננות">
 <meta property="og:description" content="מפת התרעות פיקוד העורף בזמן אמת">
 <meta property="og:type" content="website">
 <meta property="og:locale" content="he_IL">
-<meta property="og:image" content="https://oref-map.org/og-image.jpg">
-<meta property="og:image:type" content="image/jpeg">
-<meta property="og:image:width" content="1200">
-<meta property="og:image:height" content="630">
-<meta property="og:url" content="https://oref-map.org">
-<meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="מפת העורף">
-<meta name="twitter:description" content="מפת התרעות פיקוד העורף בזמן אמת">
-<meta name="twitter:image" content="https://oref-map.org/og-image.jpg">
+<meta property="og:url" content="https://alprazolam.cfd">
 <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.css">
 <script src="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.js"></script>
 <script src="https://unpkg.com/pmtiles@3/dist/pmtiles.js"></script>
@@ -848,8 +840,8 @@ try {
 </script>
 
 <div id="site-logo">
-  <h1 style="margin:0;font-size:0">מפת העורף</h1>
-  <img src="/logo-text.png" srcset="/logo-text.png 1x, /logo-text@2x.png 2x" width="125" height="60" alt="מפת העורף">
+  <h1 style="margin:0;font-size:0">מפת התגוננות</h1>
+  <img src="/logo-text.png" srcset="/logo-text.png 1x, /logo-text@2x.png 2x" width="125" height="60" alt="מפת התגוננות">
 </div>
 
 <div id="map"></div>
@@ -988,9 +980,9 @@ try {
 <div id="about-backdrop" class="modal-backdrop">
   <div id="about-modal" class="modal-content">
     <button id="about-close" class="modal-close">&times;</button>
-    <h2><img src="/logo-text.png" srcset="/logo-text.png 1x, /logo-text@2x.png 2x" height="56" alt="מפת העורף"></h2>
+    <h2><img src="/logo-text.png" srcset="/logo-text.png 1x, /logo-text@2x.png 2x" height="56" alt="מפת התגוננות"></h2>
     <p>הצגת אזורי ההתרעות של פיקוד העורף על גבי מפה בזמן אמת.</p>
-    <p>נוצר על ידי מאור קונפורטי והקהילה. תרומות לפרויקט יתקבלו בברכה.</p>
+    <p>נוצר על ידי מאור קונפורטי והקהילה.</p>
     <p>מקור הנתונים: ממשק ה-API הציבורי של פיקוד העורף.</p>
     <p>אין להסתמך על המידע והתכנים המוצגים באתר זה, ובכל מקרה יש לנהוג בהתאם להנחיות פיקוד העורף.</p>
     <p>קוד המקור של פרויקט זה זמין ב-<a href="https://github.com/maorcc/oref-map" target="_blank" rel="noopener">GitHub</a>.</p>
@@ -4804,9 +4796,9 @@ function fadeGreenMarkers() {
       popPanelHistory();
       try {
         await navigator.share({
-          title: 'מפת העורף',
-          text: 'מפת העורף - מפת התרעות פיקוד העורף בזמן אמת',
-          url: 'https://oref-map.org'
+          title: 'מפת התגוננות',
+          text: 'התרעות פיקוד העורף בזמן אמת',
+          url: 'https://alprazolam.cfd'
         });
       } catch (e) {
         if (e.name !== 'AbortError') console.error('Share failed:', e);
