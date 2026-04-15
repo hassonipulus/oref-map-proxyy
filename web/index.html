@@ -4872,32 +4872,37 @@ if ('serviceWorker' in navigator) {
 })();
 </script>
 </div>
-  <button id="dev-test-btn" style="position: fixed; bottom: 24px; left: 24px; z-index: 9999; padding: 12px 18px; background: #ef4444; color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,0.3); font-size: 14px;">
-  🚨 טסט (Local Test)
-</button>
-<button onclick="location.reload()" style="position: fixed; bottom: 24px; left: 180px; z-index: 9999; padding: 12px 18px; background: #6b7280; color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,0.3); font-size: 14px;">
-  🔄 נקה מפה (Clear)
-</button>
+<div style="position: fixed; bottom: 24px; left: 24px; z-index: 9999; display: flex; gap: 12px; flex-wrap: wrap;">
+  
+  <button id="dev-test-btn" style="padding: 12px 18px; background: #ef4444; color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,0.3); font-size: 14px;">
+    🚨 טסט (Local Test)
+  </button>
+  
+  <button onclick="location.reload()" style="padding: 12px 18px; background: #6b7280; color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,0.3); font-size: 14px;">
+    🔄 נקה מפה (Clear)
+  </button>
+
+</div>
+
 <script>
   document.getElementById('dev-test-btn').addEventListener('click', function() {
-      // 1. Create a fake payload that perfectly matches the Oref API
+      // 1. Create the fake payload
       var fakeAlert = {
           id: "TEST_" + Date.now(),
           cat: "1",
           title: "ירי רקטות וטילים",
-          data: ["תל אביב - מרכז", "ראש העין"], // You can change these to any cities in your polygons list
+          data: ["תל אביב - מרכז", "ראש העין"],
           desc: "היכנסו למרחב המוגן"
       };
       
-      // 2. Feed it directly into the map's brain
+      // 2. Feed it directly into the map
       if (window.injectAlert) {
           window.injectAlert(fakeAlert);
-          // Optional: Force the map to pan to the event so you don't have to scroll manually
           if (typeof getActiveEventBounds === 'function' && typeof maybeZoomToEvent === 'function') {
               setTimeout(maybeZoomToEvent, 100); 
           }
       } else {
-          console.error("injectAlert function not found. The map script might still be loading.");
+          console.error("injectAlert function not found.");
       }
   });
 </script>
