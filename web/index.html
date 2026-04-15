@@ -1168,15 +1168,12 @@ try {
   //   var PROXY_BASE = 'https://oref-proxy.YOUR_ACCOUNT.workers.dev';
   var ANALYTICS_POLL_MS = 30000;
   var ANALYTICS_URL = '/api/analytics';
-// ==========================================
-// 1. CLEAN MAP INITIALIZATION
-// ==========================================
-var protocol = new pmtiles.Protocol();
-maplibregl.addProtocol("pmtiles", protocol.tile);
+  var protocol = new pmtiles.Protocol();
+  maplibregl.addProtocol("pmtiles", protocol.tile);
 
 var map = new maplibregl.Map({
     container: 'map',
-    style: 'https://raw.githubusercontent.com/maorcc/oref-map/refs/heads/main/web/style.json',
+    style: '',
     center: [34.8, 31.5],
     zoom: 7,
     maxBounds: [[25.0, 6.0], [70.0, 44.0]],
@@ -1191,28 +1188,29 @@ var map = new maplibregl.Map({
         return { url: url };
     }
 });
-
-// ==========================================
-// 2. CLEAN API FETCH (NO TEST LOGIC)
-// ==========================================
 var PROXY_BASE = 'https://oref-proxy.xanagis.workers.dev';
 var apiPrefix = '/api';
 
 function apiFetch(endpoint) {
     var url = PROXY_BASE + apiPrefix + '/' + endpoint;
     
-    // Cache buster
+    // Cache buster to ensure the browser always gets the newest data
     url += (url.indexOf('?') === -1 ? '?' : '&') + '_=' + new Date().getTime();
 
     return fetch(url, { cache: 'no-store' })
         .then(function(resp) {
-            if (!resp.ok) return new Response("[]", { status: 200, headers: new Headers({'Content-Type': 'application/json'}) });
+            // If the server fails, return a safe empty array so the map doesn't crash
+            if (!resp.ok) {
+                return new Response("[]", { status: 200, headers: new Headers({'Content-Type': 'application/json'}) });
+            }
             return resp;
         })
         .catch(function(err) {
+            // If the network drops, return a safe empty array
             return new Response("[]", { status: 200, headers: new Headers({'Content-Type': 'application/json'}) });
         });
 }
+  
   var lastVisitors24h = null;
 
   function fetchAnalytics() {
@@ -1477,7 +1475,7 @@ function apiFetch(endpoint) {
     maxBounds: [[25.0, 6.0], [70.0, 44.0]],
     touchPitch: false,
     maxTileCacheZoomLevels: 8,
-    fadeDuration: 0,
+    fadeDuration: 0
     transformRequest: function(url, resourceType) {
         // Intercept requests to the blocked original server and redirect to your self-hosted file
         if (url === 'pmtiles://https://tiles.oref-map.org/middle-east.pmtiles') {
@@ -1485,7 +1483,7 @@ function apiFetch(endpoint) {
         }
         return { url: url };
     }
-});
+  });
 
   map.dragRotate.disable();
   map.touchZoomRotate.disableRotation();
