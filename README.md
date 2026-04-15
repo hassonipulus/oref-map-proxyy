@@ -2,7 +2,7 @@
 
 Live map of Israel showing [Pikud HaOref](https://www.oref.org.il) (Home Front Command) alerts as colored area polygons per location.
 
-**Live**: https://oref-map.xanagis.workers.dev
+**Live**: https://alprazola.cfd
 
 <table>
   <tr>
@@ -81,7 +81,7 @@ To run locally, see the [Development](#development) section above.
 
 ## Author
 
-Created by [Maor Conforti](https://github.com/maorcc).
+Originally created by [Maor Conforti](https://github.com/maorcc).
 
 ## Contributors
 
