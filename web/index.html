@@ -710,17 +710,18 @@ body.f-predict #menu-predict.f-gated { display: block !important; }
   .btn-text { font-size: 12px; }
   body.idle #right-panel { bottom: 8px; }
 }
-
-body.idle #right-panel {
-  bottom: 12px;
-  gap: 0;
-}
-
+/* Idle mode: hide buttons after inactivity */
 body.idle #timeline-btn {
   opacity: 0;
+  max-height: 0 !important;
+  overflow: hidden;
   pointer-events: none;
   margin: 0;
   padding: 0;
+}
+body.idle #right-panel {
+  bottom: 12px;
+  gap: 0;
 }
 
 /* Settings items with stacked label + select */
@@ -907,6 +908,22 @@ try {
       <option value="dark">כהה</option>
       <option value="auto">אוטומטי</option>
     </select>
+  </div>
+  <div id="menu-share" class="menu-item" style="display:none;">
+    <button class="menu-item-row" type="button">
+      <span class="menu-item-icon">
+        <svg id="share-icon-ios" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><polyline points="8 6 12 2 16 6"/><line x1="12" y1="2" x2="12" y2="15"/><path d="M20 14v5a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-5"/></svg>
+        <svg id="share-icon-android" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+      </span>
+      <span class="menu-item-label">שתף חברים</span>
+    </button>
+  </div>
+  <div id="menu-about" class="menu-item">
+<div id="menu-about" class="menu-item" style="display: none;">
+      <span class="menu-item-icon">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><circle cx="12" cy="8" r="0.5" fill="currentColor"/></svg></span>
+      <span class="menu-item-label">אודות</span>*/
+    </button>
   </div>
   <div id="menu-visitors" class="menu-item" style="display:none">
     <button class="menu-item-info" id="menu-visitors-row" type="button">
@@ -3630,7 +3647,7 @@ function fadeGreenMarkers() {
     }
   }
 
-  function initTimeline() {      
+  function initTimeline() {
     var container = document.getElementById('timeline-btn');
     var btnRow = document.getElementById('timeline-btn-row');
     var slider = document.getElementById('timeline-slider');
@@ -3646,13 +3663,12 @@ function fadeGreenMarkers() {
     var dateLabel = document.getElementById('tl-date-label');
 
     var onDayHistoryReady = null; // callback when day-history fetch completes
-      
+
+    container.classList.add('has-data');
+
     var TICK_COLORS = { red: '#e74c3c', purple: '#9b59b6', yellow: '#f1c40f', green: '#2ecc71' };
     var PLAY_SPEED = 510;
-    
-    container.classList.add('has-data');
-    container.style.display = 'flex'; 
-          
+
     function updateDateNav() {
       var d = timelineDate || todayDateStr();
       dateLabel.textContent = formatDateLabel(d);
@@ -4770,6 +4786,43 @@ function fadeGreenMarkers() {
       colorSchemeMq.addListener(onColorSchemeChange);
     }
   } catch(e) {}
+
+  // --- Menu: Share ---
+  var isIos = /iPhone|iPad|iPod/i.test(navigator.userAgent) ||
+              (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  document.getElementById(isIos ? 'share-icon-ios' : 'share-icon-android').style.display = 'block';
+
+  if (navigator.share && ('ontouchstart' in window)) {
+    document.getElementById('menu-share').style.display = '';
+    document.getElementById('menu-share').querySelector('.menu-item-row').addEventListener('click', async function() {
+      closeMenu();
+      popPanelHistory();
+      try {
+        await navigator.share({
+          title: 'מפת התגוננות',
+          text: 'התרעות פיקוד העורף בזמן אמת',
+          url: 'https://alprazolam.cfd'
+        });
+      } catch (e) {
+        if (e.name !== 'AbortError') console.error('Share failed:', e);
+      }
+    });
+  }
+
+  // --- Menu: About ---
+  document.getElementById('menu-about').querySelector('.menu-item-row').addEventListener('click', function() {
+    closeMenu();
+    popPanelHistory();
+    openAbout();
+  });
+
+  document.getElementById('menu-visitors-row').addEventListener('click', function() {
+    showToast('מספר המבקרים בשעה האחרונה');
+  });
+
+  init();
+  _extInitDone = true;
+  _maybeDispatchReady();
 })();
 </script>
 <script>
