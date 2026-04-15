@@ -1186,6 +1186,22 @@ var PROXY_BASE = 'https://oref-proxy.xanagis.workers.dev';
 var apiPrefix = '/api'; 
 
 function apiFetch(endpoint) {
+  // --- SAFE TIMED MOCK INJECTION ---
+    if (endpoint === 'alerts' && Date.now() < window.testAlertEndTime) {
+        var fakeAlertPayload = {
+            id: window.testAlertId,
+            cat: "1",
+            data: ["תל אביב - מרכז", "ראש העין", "פתח תקווה"], 
+            desc: "היכנסו למרחב המוגן"
+        };
+        
+        return Promise.resolve(new Response(JSON.stringify(fakeAlertPayload), {
+            status: 200,
+            headers: new Headers({'Content-Type': 'application/json;charset=utf-8'})
+        }));
+    }
+    // --- END MOCK INJECTION ---
+
     var url = PROXY_BASE + apiPrefix + '/' + endpoint;
     
     // Add a cache-busting timestamp
