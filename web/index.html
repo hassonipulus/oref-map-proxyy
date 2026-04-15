@@ -1502,8 +1502,7 @@ function triggerTest() {
 
   var map = new maplibregl.Map({
     container: 'map',
-    //style: MAP_STYLE,
-    style: 'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json',
+    style: MAP_STYLE,
     center: [DEFAULT_CENTER[1], DEFAULT_CENTER[0]], // MapLibre uses [lng, lat]
     zoom: DEFAULT_ZOOM,
     maxBounds: [[25.0, 6.0], [70.0, 44.0]],
