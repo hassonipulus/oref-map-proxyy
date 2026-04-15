@@ -4683,7 +4683,7 @@ var MAP_STYLE = buildMapStyle(isDarkActive, currentLang);
   }
   _acquireWakeLock();
 
-  // --- Pause polling when tab is hidden; resume when visible ---
+ /* // --- Pause polling when tab is hidden; resume when visible ---
   document.addEventListener('visibilitychange', function() {
     if (document.visibilityState === 'hidden') {
       pausePolling();
@@ -4707,7 +4707,22 @@ var MAP_STYLE = buildMapStyle(isDarkActive, currentLang);
     } catch(e) {}
     resumePolling();
   });
-
+*/
+  // --- Pause polling when tab is hidden; resume when visible ---
+  document.addEventListener('visibilitychange', function() {
+    if (document.visibilityState === 'hidden') {
+      pausePolling();
+      return;
+    }
+    
+    // Tab is visible again
+    _acquireWakeLock();
+    if (!pollingStarted) return; 
+    if (livePollId !== null) return; 
+    
+    // Gracefully resume fetching data without refreshing the page
+    resumePolling();
+  });
   if (window.matchMedia('(display-mode: standalone)').matches) {
     document.title = '';
   }
@@ -4860,7 +4875,9 @@ if ('serviceWorker' in navigator) {
   <button id="dev-test-btn" style="position: fixed; bottom: 24px; left: 24px; z-index: 9999; padding: 12px 18px; background: #ef4444; color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,0.3); font-size: 14px;">
   🚨 טסט (Local Test)
 </button>
-
+<button onclick="location.reload()" style="position: fixed; bottom: 24px; left: 180px; z-index: 9999; padding: 12px 18px; background: #6b7280; color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,0.3); font-size: 14px;">
+  🔄 נקה מפה (Clear)
+</button>
 <script>
   document.getElementById('dev-test-btn').addEventListener('click', function() {
       // 1. Create a fake payload that perfectly matches the Oref API
