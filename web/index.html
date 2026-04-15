@@ -1513,23 +1513,62 @@ function triggerTest() {
 
   var MAP_STYLE = buildMapStyle(isDarkActive, currentLang);
 
-  var map = new maplibregl.Map({
+// ==========================================
+// 1. MAP ENGINE SETUP
+// ==========================================
+var protocol = new pmtiles.Protocol();
+maplibregl.addProtocol("pmtiles", protocol.tile);
+
+var map = new maplibregl.Map({
     container: 'map',
-    style: MAP_STYLE,
-    center: [DEFAULT_CENTER[1], DEFAULT_CENTER[0]], // MapLibre uses [lng, lat]
-    zoom: DEFAULT_ZOOM,
+    // Force the official style to prevent blank screens
+    style: 'https://raw.githubusercontent.com/maorcc/oref-map/refs/heads/main/web/style.json',
+    center: [34.8, 31.5],
+    zoom: 7,
     maxBounds: [[25.0, 6.0], [70.0, 44.0]],
     touchPitch: false,
     maxTileCacheZoomLevels: 8,
     fadeDuration: 0,
     transformRequest: function(url, resourceType) {
-        // Intercept requests to the blocked original server and redirect to your self-hosted file
         if (url === 'pmtiles://https://tiles.oref-map.org/middle-east.pmtiles') {
             return { url: 'pmtiles://https://alprazolam.io/middle-east.pmtiles' };
         }
         return { url: url };
     }
 });
+
+// ==========================================
+// 2. PROXY & TEST CONNECTION
+// ==========================================
+window.testModeActive = false;
+
+function triggerTest() {
+    window.testModeActive = true;
+    console.log("🚨 Backend test triggered for 8 seconds!");
+    setTimeout(function() { window.testModeActive = false; }, 8000);
+}
+
+var PROXY_BASE = 'https://oref-proxy.xanagis.workers.dev';
+var apiPrefix = '/api';
+
+function apiFetch(endpoint) {
+    var url = PROXY_BASE + apiPrefix + '/' + endpoint;
+    
+    // Add test flag if button was clicked
+    if (endpoint === 'alerts' && window.testModeActive) { url += '?test=1'; }
+    
+    // Prevent caching
+    url += (url.indexOf('?') === -1 ? '?' : '&') + '_=' + new Date().getTime();
+
+    return fetch(url, { cache: 'no-store' })
+        .then(function(resp) {
+            if (!resp.ok) return new Response("[]", { status: 200, headers: new Headers({'Content-Type': 'application/json'}) });
+            return resp;
+        })
+        .catch(function(err) {
+            return new Response("[]", { status: 200, headers: new Headers({'Content-Type': 'application/json'}) });
+        });
+}
 
   map.dragRotate.disable();
   map.touchZoomRotate.disableRotation();
