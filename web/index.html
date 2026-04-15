@@ -2594,7 +2594,7 @@ var MAP_STYLE = buildMapStyle(isDarkActive, currentLang);
     map.removeFeatureState({ source: 'alerts-source', id: id });
   }
 
-  function setLocationState(name, state, since) {
+function setLocationState(name, state, since) {
     var existing = locationStates[name];
 
     // Priority: red > purple > yellow. Green always overrides (all-clear).
@@ -2611,14 +2611,17 @@ var MAP_STYLE = buildMapStyle(isDarkActive, currentLang);
     if (nameToId[name] === undefined) return;
 
     var now = Date.now();
-    var opacity = state === 'green'
-      ? 0.5 * Math.max(0, 1 - ((now - (since || now)) / GREEN_FADE_MS))
-      : 0.3;
+    
+    // 🚨 THE FIX: Ignore server drift. Lock the green timer to the browser's exact local time.
+    var effectiveSince = (state === 'green') ? now : (since || now);
+
+    var opacity = state === 'green' ? 0.5 : 0.3;
+    
     applyFeatureStyle(name, state, opacity);
-    locationStates[name] = { state: state, since: since || Date.now() };
+    locationStates[name] = { state: state, since: effectiveSince };
     playSoundForState(state, name);
   }
-
+  
   function removeLocation(name) {
     var entry = locationStates[name];
     if (entry) {
@@ -3197,7 +3200,7 @@ var MAP_STYLE = buildMapStyle(isDarkActive, currentLang);
   }
 
   // --- Green fade-out ---
-  function fadeGreenMarkers() {
+function fadeGreenMarkers() {
     if (!isLiveMode) return;
     var now = Date.now();
     var toRemove = [];
@@ -3207,11 +3210,14 @@ var MAP_STYLE = buildMapStyle(isDarkActive, currentLang);
         if (now - entry.since >= ALERT_MAX_AGE_MS) toRemove.push(name);
         continue;
       }
+      
       var elapsed = now - entry.since;
+      
       if (elapsed >= GREEN_FADE_MS) {
         toRemove.push(name);
       } else {
-        var opacity = 0.5 * (1 - elapsed / GREEN_FADE_MS);
+        // 🚨 THE FIX: Math.max ensures the opacity never accidentally drops below zero
+        var opacity = Math.max(0, 0.5 * (1 - elapsed / GREEN_FADE_MS));
         var id = nameToId[name];
         if (id !== undefined) {
           map.setFeatureState({ source: 'alerts-source', id: id }, {
@@ -3229,7 +3235,7 @@ var MAP_STYLE = buildMapStyle(isDarkActive, currentLang);
       document.dispatchEvent(new CustomEvent('app:stateChanged'));
     }
   }
-
+  
   function formatRelativeTime(ts) {
     if (!ts) return '';
     var diffMs = Date.now() - ts;
