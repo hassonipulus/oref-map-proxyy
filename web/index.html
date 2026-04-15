@@ -41,7 +41,10 @@ html, body { height: 100%; font-family: Arial, sans-serif; }
 .maplibregl-ctrl-group button:first-child { border-radius: 6px 6px 0 0 !important; }
 .maplibregl-ctrl-group button:last-child { border-radius: 0 0 6px 6px !important; }
 body.has-overlay .maplibregl-canvas-container.maplibregl-interactive { pointer-events: none !important; }
-
+.maplibregl-ctrl-attrib {
+    display: none !important;
+}
+  
 #site-logo {
   position: fixed;
   top: 0;
@@ -1474,8 +1477,7 @@ function apiFetch(endpoint) {
       sources: {
         protomaps: {
           type: 'vector',
-          url: PMTILES_URL,
-          attribution: '<a href="https://protomaps.com">Protomaps</a> \u00a9 <a href="https://openstreetmap.org">OpenStreetMap</a>'
+          url: PMTILES_URL
         }
       },
       layers: customizeBasemapLayers(basemaps.layers('protomaps', flavor, { lang: lang }))
