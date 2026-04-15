@@ -852,7 +852,6 @@ body.dark #sound-all-btn:hover { background: #444 !important; }
 </head>
 <body>
 <script>
-  <button onclick="triggerTest()" id="test-btn">🚨 Run Test Alert</button>
 // Apply dark class before first paint to prevent flash
 try {
   var t = localStorage.getItem('oref-theme');
@@ -1599,6 +1598,38 @@ function apiFetch(endpoint) {
       pendingPolygonData = null;
     }
   });
+
+  // 1. Create a custom MapLibre Control plugin
+class TestAlertControl {
+    onAdd(map) {
+        this._map = map;
+        this._container = document.createElement('div');
+        // Use MapLibre's native classes so it matches the zoom buttons perfectly
+        this._container.className = 'maplibregl-ctrl maplibregl-ctrl-group';
+        
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.title = 'Run 8-Second Test Alert';
+        btn.innerHTML = '🚨'; // A simple siren icon to fit the small square
+        btn.style.cursor = 'pointer';
+        btn.style.fontSize = '16px';
+        
+        // Call the triggerTest function we built earlier
+        btn.onclick = triggerTest; 
+        
+        this._container.appendChild(btn);
+        return this._container;
+    }
+
+    onRemove() {
+        this._container.parentNode.removeChild(this._container);
+        this._map = undefined;
+    }
+}
+
+// 2. Add the button to the map's UI. 
+// If your zoom buttons are in the bottom-right, change 'top-right' to 'bottom-right'.
+map.addControl(new TestAlertControl(), 'top-right');
 
   // --- Toast ---
   function showToast(msg) {
