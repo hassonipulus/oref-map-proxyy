@@ -1480,7 +1480,7 @@ function apiFetch(endpoint) {
     };
   }
 
-  var MAP_STYLE = buildMapStyle(isDarkActive, currentLang);
+var MAP_STYLE = buildMapStyle(isDarkActive, currentLang);
 
   var map = new maplibregl.Map({
     container: 'map',
@@ -1490,8 +1490,7 @@ function apiFetch(endpoint) {
     maxBounds: [[25.0, 6.0], [70.0, 44.0]],
     touchPitch: false,
     maxTileCacheZoomLevels: 8,
-    fadeDuration: 0})
-                               
+    fadeDuration: 0,
     transformRequest: function(url, resourceType) {
         // Intercept requests to the blocked original server and redirect to your self-hosted file
         if (url === 'pmtiles://https://tiles.oref-map.org/middle-east.pmtiles') {
