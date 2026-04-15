@@ -716,6 +716,13 @@ body.idle #right-panel {
   gap: 0;
 }
 
+body.idle #timeline-btn {
+  opacity: 0;
+  pointer-events: none;
+  margin: 0;
+  padding: 0;
+}
+
 /* Settings items with stacked label + select */
 .menu-setting .menu-item-row { padding-bottom: 4px; }
 .menu-setting-select {
@@ -3623,7 +3630,7 @@ function fadeGreenMarkers() {
     }
   }
 
-  function initTimeline() {
+  function initTimeline() {      
     var container = document.getElementById('timeline-btn');
     var btnRow = document.getElementById('timeline-btn-row');
     var slider = document.getElementById('timeline-slider');
@@ -3639,13 +3646,13 @@ function fadeGreenMarkers() {
     var dateLabel = document.getElementById('tl-date-label');
 
     var onDayHistoryReady = null; // callback when day-history fetch completes
-
-    container.classList.add('has-data');
-    container.style.display = 'flex';
       
     var TICK_COLORS = { red: '#e74c3c', purple: '#9b59b6', yellow: '#f1c40f', green: '#2ecc71' };
     var PLAY_SPEED = 510;
-
+    
+    container.classList.add('has-data');
+    container.style.display = 'flex'; 
+          
     function updateDateNav() {
       var d = timelineDate || todayDateStr();
       dateLabel.textContent = formatDateLabel(d);
