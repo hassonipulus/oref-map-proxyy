@@ -842,15 +842,6 @@ try {
     document.body.classList.add('dark');
 } catch(e) {}
 
-  window.testAlertEndTime = 0;
-window.testAlertId = "";
-
-function triggerTest() {
-    window.testAlertEndTime = Date.now() + 8000; 
-    window.testAlertId = "TEST_" + Date.now(); 
-    console.log("🚨 Test armed for 8 seconds!");
-}
-
 </script>
 
 <div id="site-logo">
@@ -1180,28 +1171,12 @@ function triggerTest() {
   
   // 1. Point this directly to your new Israeli VPS or custom domain
 // Example: 'http://11.22.33.44:8080' or 'https://api.your-domain.com'
-var PROXY_BASE = 'https://oref-proxy.xanagis.workers.dev'; 
+/*var PROXY_BASE = 'https://oref-proxy.xanagis.workers.dev'; 
 
 // 2. Adjust this if your custom proxy uses a different route path (or leave empty if it handles endpoints at the root)
 var apiPrefix = '/api'; 
 
 function apiFetch(endpoint) {
-  // --- SAFE TIMED MOCK INJECTION ---
-    if (endpoint === 'alerts' && Date.now() < window.testAlertEndTime) {
-        var fakeAlertPayload = {
-            id: window.testAlertId,
-            cat: "1",
-            data: ["תל אביב - מרכז", "ראש העין", "פתח תקווה"], 
-            desc: "היכנסו למרחב המוגן"
-        };
-        
-        return Promise.resolve(new Response(JSON.stringify(fakeAlertPayload), {
-            status: 200,
-            headers: new Headers({'Content-Type': 'application/json;charset=utf-8'})
-        }));
-    }
-    // --- END MOCK INJECTION ---
-
     var url = PROXY_BASE + apiPrefix + '/' + endpoint;
     
     // Add a cache-busting timestamp
@@ -1232,6 +1207,44 @@ function apiFetch(endpoint) {
   function resetProxy() {
     PROXY_BASE = 'https://oref-proxy.xanagis.workers.dev';
     apiPrefix = '/api';
+}*/
+// 1. The ultra-simple test state
+window.testModeActive = false;
+
+function triggerTest() {
+    window.testModeActive = true;
+    console.log("🚨 Backend test triggered for 8 seconds!");
+    
+    // Auto-turn off after 8 seconds
+    setTimeout(function() { 
+        window.testModeActive = false; 
+        console.log("✅ Test finished, back to live quiet mode.");
+    }, 8000);
+}
+
+// 2. The clean fetch function
+var PROXY_BASE = 'https://oref-proxy.xanagis.workers.dev'; // Your actual worker URL
+var apiPrefix = '/api';
+
+function apiFetch(endpoint) {
+    var url = PROXY_BASE + apiPrefix + '/' + endpoint;
+    
+    // If the button was clicked, tell the backend to send the fake data
+    if (endpoint === 'alerts' && window.testModeActive) {
+        url += '?test=1';
+    }
+    
+    // Standard cache buster
+    url += (url.indexOf('?') === -1 ? '?' : '&') + '_=' + new Date().getTime();
+
+    return fetch(url, { cache: 'no-store' })
+        .then(function(resp) {
+            if (!resp.ok) return new Response("[]", { status: 200, headers: new Headers({'Content-Type': 'application/json'}) });
+            return resp;
+        })
+        .catch(function(err) {
+            return new Response("[]", { status: 200, headers: new Headers({'Content-Type': 'application/json'}) });
+        });
 }
 
   var lastVisitors24h = null;
