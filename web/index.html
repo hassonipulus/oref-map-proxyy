@@ -1188,29 +1188,46 @@ var map = new maplibregl.Map({
         return { url: url };
     }
 });
-var PROXY_BASE = 'https://oref-proxy.xanagis.workers.dev';
-var apiPrefix = '/api';
+
+  
+var PROXY_BASE = 'https://oref-proxy.xanagis.workers.dev'; 
+
+// 2. Adjust this if your custom proxy uses a different route path (or leave empty if it handles endpoints at the root)
+var apiPrefix = '/api'; 
 
 function apiFetch(endpoint) {
     var url = PROXY_BASE + apiPrefix + '/' + endpoint;
     
-    // Cache buster to ensure the browser always gets the newest data
-    url += (url.indexOf('?') === -1 ? '?' : '&') + '_=' + new Date().getTime();
+    // Add a cache-busting timestamp
+    url += '?_=' + new Date().getTime(); 
 
-    return fetch(url, { cache: 'no-store' })
+    if (typeof FF !== 'undefined' && FF.debugapi) {
+        url += '&debugapi=' + encodeURIComponent(FF.debugapi);
+    }
+
+    function createEmptyResponse() {
+        return new Response("[]", {
+            status: 200,
+            headers: new Headers({'Content-Type': 'application/json;charset=utf-8'})
+        });
+    }
+
+    return fetch(url, { cache: 'no-store' }) // Force browser not to cache
         .then(function(resp) {
-            // If the server fails, return a safe empty array so the map doesn't crash
-            if (!resp.ok) {
-                return new Response("[]", { status: 200, headers: new Headers({'Content-Type': 'application/json'}) });
-            }
+            if (!resp.ok) return createEmptyResponse();
             return resp;
         })
         .catch(function(err) {
-            // If the network drops, return a safe empty array
-            return new Response("[]", { status: 200, headers: new Headers({'Content-Type': 'application/json'}) });
+            return createEmptyResponse();
         });
 }
+
   
+  function resetProxy() {
+    PROXY_BASE = 'https://oref-proxy.xanagis.workers.dev';
+    apiPrefix = '/api';
+}
+
   var lastVisitors24h = null;
 
   function fetchAnalytics() {
