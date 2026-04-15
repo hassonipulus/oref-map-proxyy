@@ -1168,86 +1168,85 @@ try {
   //   var PROXY_BASE = 'https://oref-proxy.YOUR_ACCOUNT.workers.dev';
   var ANALYTICS_POLL_MS = 30000;
   var ANALYTICS_URL = '/api/analytics';
-  
-  // 1. Point this directly to your new Israeli VPS or custom domain
-// Example: 'http://11.22.33.44:8080' or 'https://api.your-domain.com'
+// 1. The Sticky Memory variables (10 minutes)
+window.stickyAlerts = {}; 
+var STICKY_DURATION_MS = 10 * 60 * 1000; 
+
+// 2. The Production Fetch Function
 var PROXY_BASE = 'https://oref-proxy.xanagis.workers.dev'; 
-
-// 2. Adjust this if your custom proxy uses a different route path (or leave empty if it handles endpoints at the root)
-var apiPrefix = '/api'; 
-
-function apiFetch(endpoint) {
-    var url = PROXY_BASE + apiPrefix + '/' + endpoint;
-    
-    // Add a cache-busting timestamp
-    url += '?_=' + new Date().getTime(); 
-
-    if (typeof FF !== 'undefined' && FF.debugapi) {
-        url += '&debugapi=' + encodeURIComponent(FF.debugapi);
-    }
-
-    function createEmptyResponse() {
-        return new Response("[]", {
-            status: 200,
-            headers: new Headers({'Content-Type': 'application/json;charset=utf-8'})
-        });
-    }
-
-    return fetch(url, { cache: 'no-store' }) // Force browser not to cache
-        .then(function(resp) {
-            if (!resp.ok) return createEmptyResponse();
-            return resp;
-        })
-        .catch(function(err) {
-            return createEmptyResponse();
-        });
-}
-
-  
-  function resetProxy() {
-    PROXY_BASE = 'https://oref-proxy.xanagis.workers.dev';
-    apiPrefix = '/api';
-}
-  /*
-// 1. The ultra-simple test state
-window.testModeActive = false;
-
-function triggerTest() {
-    window.testModeActive = true;
-    console.log("🚨 Backend test triggered for 8 seconds!");
-    
-    // Auto-turn off after 8 seconds
-    setTimeout(function() { 
-        window.testModeActive = false; 
-        console.log("✅ Test finished, back to live quiet mode.");
-    }, 8000);
-}
-
-// 2. The clean fetch function
-var PROXY_BASE = 'https://oref-proxy.xanagis.workers.dev'; // Your actual worker URL
 var apiPrefix = '/api';
 
 function apiFetch(endpoint) {
     var url = PROXY_BASE + apiPrefix + '/' + endpoint;
-    
-    // If the button was clicked, tell the backend to send the fake data
-    if (endpoint === 'alerts' && window.testModeActive) {
-        url += '?test=1';
-    }
-    
-    // Standard cache buster
     url += (url.indexOf('?') === -1 ? '?' : '&') + '_=' + new Date().getTime();
 
     return fetch(url, { cache: 'no-store' })
         .then(function(resp) {
             if (!resp.ok) return new Response("[]", { status: 200, headers: new Headers({'Content-Type': 'application/json'}) });
-            return resp;
+            
+            // Pass-through for history or other endpoints
+            if (endpoint !== 'alerts') return resp;
+
+            // --- STICKY ALERTS MIDDLEWARE ---
+            return resp.json().then(function(data) {
+                var now = Date.now();
+                var incomingCities = [];
+                var basePayload = null;
+
+                var dataArray = Array.isArray(data) ? data : (Object.keys(data).length > 0 ? [data] : []);
+                
+                dataArray.forEach(function(item) {
+                    if (item && item.data && Array.isArray(item.data)) {
+                        item.data.forEach(function(city) { incomingCities.push(city); });
+                        if (!basePayload) basePayload = JSON.parse(JSON.stringify(item)); 
+                    }
+                });
+
+                // Add or refresh the 10-minute timer for incoming cities
+                incomingCities.forEach(function(city) {
+                    window.stickyAlerts[city] = now + STICKY_DURATION_MS;
+                });
+
+                // Purge expired cities and build active list
+                var activeCities = [];
+                for (var city in window.stickyAlerts) {
+                    if (now > window.stickyAlerts[city]) {
+                        delete window.stickyAlerts[city]; 
+                    } else {
+                        activeCities.push(city);
+                    }
+                }
+
+                if (activeCities.length === 0) {
+                    return new Response("[]", { status: 200, headers: new Headers({'Content-Type': 'application/json'}) });
+                }
+
+                if (!basePayload) {
+                    basePayload = {
+                        id: String(now),
+                        cat: "1",
+                        title: "התרעה",
+                        desc: "היכנסו למרחב המוגן",
+                        data: []
+                    };
+                }
+                
+                basePayload.data = activeCities;
+
+                return new Response(JSON.stringify(basePayload), { 
+                    status: 200, 
+                    headers: new Headers({'Content-Type': 'application/json'}) 
+                });
+                
+            }).catch(function(err) {
+                 return new Response("[]", { status: 200, headers: new Headers({'Content-Type': 'application/json'}) });
+            });
         })
         .catch(function(err) {
             return new Response("[]", { status: 200, headers: new Headers({'Content-Type': 'application/json'}) });
         });
 }
-*/
+
   var lastVisitors24h = null;
 
   function fetchAnalytics() {
