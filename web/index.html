@@ -1174,8 +1174,8 @@ try {
 var map = new maplibregl.Map({
     container: 'map',
     style: MAP_STYLE,
-    center: [DEFAULT_CENTER[1], DEFAULT_CENTER[0]], // MapLibre uses [lng, lat]
-    zoom: DEFAULT_ZOOM,
+    center: [34.9, 32.2], // Hardcoded Longitude and Latitude for Israel
+    zoom: 7.2,            // Hardcoded starting zoom
     maxBounds: [[25.0, 6.0], [70.0, 44.0]],
     touchPitch: false,
     maxTileCacheZoomLevels: 8,
@@ -1187,7 +1187,8 @@ var map = new maplibregl.Map({
         }
         return { url: url };
     }
-});  
+  });
+  
 var PROXY_BASE = 'https://oref-proxy.xanagis.workers.dev'; 
 
 // 2. Adjust this if your custom proxy uses a different route path (or leave empty if it handles endpoints at the root)
