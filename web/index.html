@@ -3104,18 +3104,16 @@ function setLocationState(name, state, since) {
   }
 
   // --- Process alerts ---
-  var lastLiveAlertId = null;     // 🚨 We accidentally deleted this line last time!
   var lastLiveAlertPayload = '';
 
-  function processLiveAlert(alert) {
+function processLiveAlert(alert) {
     if (!alert || !alert.data || !alert.title) return;
     
-    var isNewAlert = alert.id !== lastLiveAlertId;
-    if (!isNewAlert) return; 
+    // 🚨 2. Remove the strict alert.id check! 
+    // Because we already deduplicate the exact text payload in fetchLiveAlerts,
+    // it is 100% safe to let this process every city in the updated array!
     
-    lastLiveAlertId = alert.id;
-    
-    // Combine both title and desc so we don't overwrite the threat type!
+    // Combine both title and desc so we don't overwrite the threat type
     var combinedText = (alert.title + ' ' + (alert.desc || '')).replace(/\s+/g, ' ').trim();
     var state = classifyTitle(combinedText);
     
@@ -3128,6 +3126,8 @@ function setLocationState(name, state, since) {
     var now = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Jerusalem', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(new Date());
     for (var i = 0; i < locations.length; i++) {
       var loc = normalizeGeresh(locations[i]);
+      
+      // These functions are already smart enough to ignore cities that are already Red
       recordHistory(loc, cleanTitle, now, state);
       
       if (isLiveMode) {
