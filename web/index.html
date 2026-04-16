@@ -1267,6 +1267,8 @@ function apiFetch(endpoint) {
 
   // --- Map setup ---
   var DEFAULT_CENTER = [32.2, 34.9], DEFAULT_ZOOM = 7.2;
+  var MAP_STYLE = buildMapStyle(isDarkActive, currentLang);
+    
   // --- MapLibre GL JS setup --
   var pmtilesProtocol = new pmtiles.Protocol();
   maplibregl.addProtocol('pmtiles', pmtilesProtocol.tile);
@@ -1276,8 +1278,40 @@ function apiFetch(endpoint) {
     null, true
   );
 
-  var PMTILES_URL = 'pmtiles://https://alprazolam.io/middle-east.pmtiles';
+// 1. Initialize the map variable ONCE
+  var map = new maplibregl.Map({
+    container: 'map',
+    style: MAP_STYLE,
+    center: [DEFAULT_CENTER[1], DEFAULT_CENTER[0]], 
+    zoom: DEFAULT_ZOOM,
+    maxBounds: [[25.0, 6.0], [70.0, 44.0]],
+    touchPitch: false,
+    maxTileCacheZoomLevels: 8,
+    fadeDuration: 0,
+    attributionControl: false,
+    transformRequest: function(url, resourceType) {
+        if (url === 'pmtiles://https://tiles.oref-map.org/middle-east.pmtiles') {
+            return { url: 'pmtiles://https://alprazolam.io/middle-east.pmtiles' };
+        }
+        return { url: url };
+    }
+  });
+  
+  // 2. Define state variables (Make sure these don't use the name 'map')
+  var mapLoaded = false;
+  var polygonsGeoJSON = { type: 'FeatureCollection', features: [] };
+  var featureMap = {}; 
+  var pendingPolygonData = null;
 
+  // 3. Now it is safe to call map.on
+  map.on('load', function() {
+    mapLoaded = true;
+    console.log("Map engine started successfully.");
+
+    map.dragRotate.disable();
+    map.touchZoomRotate.disableRotation();
+    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-left');
+      
   // --- Language & theme preferences ---
   var VALID_LANGS = ['he', 'en', 'ar', 'ru'];
   var VALID_THEMES = ['light', 'dark', 'auto'];
