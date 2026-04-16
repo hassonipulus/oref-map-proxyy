@@ -1487,6 +1487,10 @@ function apiFetch(endpoint) {
       });
       navGroup.appendChild(resetBtn);
   }
+  var mapLoaded = false;   
+  var polygonsGeoJSON = { type: 'FeatureCollection', features: [] };
+  var featureMap = {}; // name → GeoJSON feature object
+  var pendingPolygonData = null; // set if geo data loads before map
     
   // Lock rotation
   map.dragRotate.disable();
