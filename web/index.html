@@ -1266,10 +1266,9 @@ function apiFetch(endpoint) {
   var FADE_TICK_MS = 1000;
 
   // --- Map setup ---
+// --- Map setup ---
   var DEFAULT_CENTER = [32.2, 34.9], DEFAULT_ZOOM = 7.2;
-  var MAP_STYLE = buildMapStyle(isDarkActive, currentLang);
-    
-  // --- MapLibre GL JS setup --
+
   var pmtilesProtocol = new pmtiles.Protocol();
   maplibregl.addProtocol('pmtiles', pmtilesProtocol.tile);
 
@@ -1278,7 +1277,10 @@ function apiFetch(endpoint) {
     null, true
   );
 
-// 1. Initialize the map variable ONCE
+  var PMTILES_URL = 'pmtiles://https://alprazolam.io/middle-east.pmtiles';
+
+  var MAP_STYLE = buildMapStyle(isDarkActive, currentLang);
+
   var map = new maplibregl.Map({
     container: 'map',
     style: MAP_STYLE,
@@ -1297,54 +1299,117 @@ function apiFetch(endpoint) {
     }
   });
   
-  // 2. Define state variables (Make sure these don't use the name 'map')
   var mapLoaded = false;
   var polygonsGeoJSON = { type: 'FeatureCollection', features: [] };
   var featureMap = {}; 
   var pendingPolygonData = null;
 
-  // 3. Now it is safe to call map.on
   map.on('load', function() {
     mapLoaded = true;
-    console.log("Map engine started successfully.");
-
+    
+    // Lock rotation and add controls
     map.dragRotate.disable();
     map.touchZoomRotate.disableRotation();
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-left');
-      
-  // --- Language & theme preferences ---
-  var VALID_LANGS = ['he', 'en', 'ar', 'ru'];
-  var VALID_THEMES = ['light', 'dark', 'auto'];
-  var currentLang = 'he';
-  var currentTheme = 'auto';
-  try { var sl = localStorage.getItem('oref-map-lang'); if (VALID_LANGS.indexOf(sl) !== -1) currentLang = sl; } catch(e) {}
-  try { var st = localStorage.getItem('oref-theme'); if (VALID_THEMES.indexOf(st) !== -1) currentTheme = st; } catch(e) {}
 
-  function resolveDarkMode() {
-    if (currentTheme === 'dark') return true;
-    if (currentTheme === 'auto') return window.matchMedia('(prefers-color-scheme: dark)').matches;
-    return false;
-  }
-  var isDarkActive = resolveDarkMode();
-  if (isDarkActive) document.body.classList.add('dark');
+    // Custom Reset Button
+    var navGroup = document.querySelector('.maplibregl-ctrl-group');
+    if (navGroup) {
+        var resetBtn = document.createElement('button');
+        resetBtn.type = 'button';
+        resetBtn.title = 'איפוס תצוגה'; 
+        resetBtn.innerHTML = '<span class="maplibregl-ctrl-icon" aria-hidden="true" style="display:flex; align-items:center; justify-content:center;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#333" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg></span>';
+        resetBtn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            isZoomingProgrammatically = true;
+            map.flyTo({ center: [DEFAULT_CENTER[1], DEFAULT_CENTER[0]], zoom: DEFAULT_ZOOM, bearing: 0, pitch: 0 });
+            map.once('moveend', function() { isZoomingProgrammatically = false; });
+        });
+        navGroup.appendChild(resetBtn);
+    }
 
-  var pendingPolygonData = null; // set if geo data loads before map
-  var polygonsGeoJSON = { type: 'FeatureCollection', features: [] };
-  var featureMap = {}; // name → GeoJSON feature object
-  var pendingPolygonData = null; // set if geo data loads before map
+    // Layers
+    map.addLayer({
+      id: 'boundaries_disputed',
+      type: 'line',
+      source: 'protomaps',
+      'source-layer': 'boundaries',
+      filter: ['all', ['<=', 'kind_detail', 2], ['==', 'disputed', true]],
+      paint: {
+        'line-color': '#777',
+        'line-width': 1.5,
+        'line-dasharray': [4, 3]
+      }
+    }, 'boundaries_country');
+
+    map.addSource('alerts-source', { type: 'geojson', data: polygonsGeoJSON });
+
+    map.addLayer({
+      id: 'alerts-fill',
+      type: 'fill',
+      source: 'alerts-source',
+      paint: {
+        'fill-color': ['coalesce', ['feature-state', 'fillColor'], '#888888'],
+        'fill-opacity': ['coalesce', ['feature-state', 'fillOpacity'], 0.01]
+      }
+    });
+
+    map.addLayer({
+      id: 'alerts-hit',
+      type: 'fill',
+      source: 'alerts-source',
+      paint: { 'fill-opacity': 0, 'fill-color': 'transparent' }
+    });
+
+    map.addLayer({
+      id: 'alerts-stroke',
+      type: 'line',
+      source: 'alerts-source',
+      paint: {
+        'line-color': ['coalesce', ['feature-state', 'lineColor'], '#aaaaaa'],
+        'line-opacity': ['coalesce', ['feature-state', 'lineOpacity'], 0], // Clean map fix
+        'line-width': ['coalesce', ['feature-state', 'lineWidth'], 1]
+      }
+    });
+
+    map.on('click', 'alerts-hit', function(e) {
+      if (menuOpen || drivingModeFeatureEnabled) return;
+      e.originalEvent.stopPropagation();
+      var validFeature = null;
+      for (var i = 0; i < e.features.length; i++) {
+          var fName = e.features[i].properties.name.toLowerCase();
+          if (fName.indexOf('border') !== 0 && fName !== 'israel') {
+              validFeature = e.features[i];
+              break;
+          }
+      }
+      if (!validFeature) return; 
+      var name = validFeature.properties.name;
+      if (selectedLocation === name) deselectLocation();
+      else openLocationPanel(name);
+    });
+
+    map.on('mouseenter', 'alerts-hit', function() {
+      if (!menuOpen && !drivingModeFeatureEnabled) map.getCanvas().style.cursor = 'pointer';
+    });
+    map.on('mouseleave', 'alerts-hit', function() { map.getCanvas().style.cursor = ''; });
+
+    if (pendingPolygonData) {
+      var cb = pendingPolygonCallback;
+      pendingPolygonCallback = null;
+      buildPolygons(pendingPolygonData, cb);
+      pendingPolygonData = null;
+    }
+  });
 
   function updateMapLibreSource() {
     if (!mapLoaded) return;
     var src = map.getSource('alerts-source');
     if (src) src.setData(polygonsGeoJSON);
   }
-
-  map.on('load', function() {
-    mapLoaded = true;
-
     // Disputed country borders (West Bank/Gaza outline, Lebanon, Golan): visible but dashed
     // (non-disputed borders and road widths are baked into MAP_STYLE via customizeBasemapLayers)
- map.on('load', function() {
+    map.on('load', function() {
     mapLoaded = true;
 
     // 🚨 MOVED HERE: Map is now guaranteed to exist!
