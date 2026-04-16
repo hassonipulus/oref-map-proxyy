@@ -1265,7 +1265,7 @@ function apiFetch(endpoint) {
   var ALERT_MAX_AGE_MS = 3600000; // 1 hour — safety net for stuck alerts
   var FADE_TICK_MS = 1000;
 
-  // --- Map setup ---
+// --- Map setup ---
 // --- Map setup ---
   var DEFAULT_CENTER = [32.2, 34.9], DEFAULT_ZOOM = 7.2;
 
@@ -1394,6 +1394,14 @@ function apiFetch(endpoint) {
     });
     map.on('mouseleave', 'alerts-hit', function() { map.getCanvas().style.cursor = ''; });
 
+    if (pendingPolygonData) {
+      var cb = pendingPolygonCallback;
+      pendingPolygonCallback = null;
+      buildPolygons(pendingPolygonData, cb);
+      pendingPolygonData = null;
+    }
+  });
+    
     if (pendingPolygonData) {
       var cb = pendingPolygonCallback;
       pendingPolygonCallback = null;
