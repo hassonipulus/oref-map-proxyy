@@ -2516,11 +2516,10 @@ function scaleWidthExpr(expr, factor) {
 
   // --- Build pre-computed polygons from locations_polygons.json ---
   // Coordinates in locations_polygons.json are already [lng, lat] — GeoJSON order
-  var nameToId = {};   // name → numeric feature id (for setFeatureState)
-
+var nameToId = {};   // name → numeric feature id (for setFeatureState)
   var pendingPolygonCallback = null;
 
-function buildPolygons(data, onReady) {
+  function buildPolygons(data, onReady) {
     if (!mapLoaded) {
       pendingPolygonData = data;
       if (onReady) pendingPolygonCallback = onReady;
@@ -2565,42 +2564,9 @@ function buildPolygons(data, onReady) {
     console.log('Loaded GeoJSON polygons for', features.length, 'locations');
     if (onReady) onReady();
   }
-    
-    // Extract population data embedded in the polygons file
-    if (data._populations) {
-      locationPopulations = data._populations;
-    }
-    var features = [];
-    var fid = 0;
-    for (var name in data) {
-      
-      // 🚨 THE FIX: Filter out the giant border blankets so they don't block clicks!
-      if (name.startsWith('border_') || name === 'Israel') continue;
-
-      var coords = data[name];
-      if (!Array.isArray(coords)) continue;
-      var isNested = Array.isArray(coords[0][0]);
-      var polygonCoords = isNested ? coords : [coords];
-      var feature = {
-        type: 'Feature',
-        id: fid,
-        properties: { name: name },
-        geometry: { type: 'Polygon', coordinates: polygonCoords }
-      };
-      features.push(feature);
-      featureMap[name] = feature;
-      nameToId[name] = fid;
-      fid++;
-    }
-    polygonsGeoJSON.features = features;
-    updateMapLibreSource();
-    console.log('Loaded GeoJSON polygons for', features.length, 'locations');
-    if (onReady) onReady();
-  }
-
 
   // --- Title classification ---
-    function classifyTitle(title) {
+  function classifyTitle(title) {
     title = title.replace(/\s+/g, ' ').trim();
 
     // Green — all-clear / event over (fades out)
@@ -2622,12 +2588,12 @@ function buildPolygons(data, onReady) {
       return 'yellow';
     }
 
-    // 🚨 PURPLE FIX: Use .includes() to catch spelling variations (עוין vs עויין)
+    // 🚨 PURPLE FIX: Use .includes() to catch spelling variations
     if (title.includes('כלי טיס') || title.includes('כטב"מ')) {
       return 'purple';
     }
 
-    // Red — active danger (missiles / non-conventional / terrorists / shelter now)
+    // Red — active danger
     if (title.includes('רקטות וטילים') ||
         title.includes('קונבנציונלי') ||
         title.includes('חדירת מחבלים') ||
@@ -2639,7 +2605,6 @@ function buildPolygons(data, onReady) {
     console.warn('Unknown alert title:', title);
     return 'red'; // default to danger for unknown
   }
-
   // --- Marker management (feature-state) ---
   function applyFeatureStyle(name, state, opacity) {
     var id = nameToId[name];
