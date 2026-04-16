@@ -2520,12 +2520,37 @@ var MAP_STYLE = buildMapStyle(isDarkActive, currentLang);
 
   var pendingPolygonCallback = null;
 
-  function buildPolygons(data, onReady) {
-    if (!mapLoaded) {
-      pendingPolygonData = data;
-      if (onReady) pendingPolygonCallback = onReady;
-      return;
+  // Extract population data embedded in the polygons file
+    if (data._populations) {
+      locationPopulations = data._populations;
     }
+    var features = [];
+    var fid = 0;
+    for (var name in data) {
+      
+      // 🚨 THE FIX: Filter out the giant border blankets so they don't block clicks!
+      if (name.startsWith('border_') || name === 'Israel') continue;
+
+      var coords = data[name];
+      if (!Array.isArray(coords)) continue;
+      var isNested = Array.isArray(coords[0][0]);
+      var polygonCoords = isNested ? coords : [coords];
+      var feature = {
+        type: 'Feature',
+        id: fid,
+        properties: { name: name },
+        geometry: { type: 'Polygon', coordinates: polygonCoords }
+      };
+      features.push(feature);
+      featureMap[name] = feature;
+      nameToId[name] = fid;
+      fid++;
+    }
+    polygonsGeoJSON.features = features;
+    updateMapLibreSource();
+    console.log('Loaded GeoJSON polygons for', features.length, 'locations');
+    if (onReady) onReady();
+  }
     // Extract population data embedded in the polygons file
     if (data._populations) {
       locationPopulations = data._populations;
