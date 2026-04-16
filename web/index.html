@@ -3283,11 +3283,18 @@ function fadeGreenMarkers() {
         catch (e) { return; }
     
         var alertArray = Array.isArray(parsedData) ? parsedData : [parsedData];
-        alertArray.forEach(function(alert) {
+alertArray.forEach(function(alert) {
             processLiveAlert(alert);
         });
-      })
-        
+      }) // This closes the .then(function(text) {
+      .catch(function(err) {
+        liveErrors++;
+        lastErrorMsg = 'Live alerts: ' + err.message;
+        if (liveErrors > 3) setStatus('err', 'בעיית תקשורת לפיקוד העורף. מנסה שוב...');
+        console.error('Live poll error:', err);
+      });
+  } // This closes the function fetchLiveAlerts() {
+    
       .catch(function(err) {
         liveErrors++;
         lastErrorMsg = 'Live alerts: ' + err.message;
@@ -4762,7 +4769,7 @@ function fadeGreenMarkers() {
 init();
   _extInitDone = true;
   _maybeDispatchReady();
-})(); // 🚨 ADDED THE MISSING ")" RIGHT HERE
+})(); // Make sure it is ( ) followed by ) followed by ;
 </script>
 <script>
 if ('serviceWorker' in navigator) {
