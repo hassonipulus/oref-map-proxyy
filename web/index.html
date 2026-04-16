@@ -1279,6 +1279,157 @@ function apiFetch(endpoint) {
 
   var PMTILES_URL = 'pmtiles://https://alprazolam.io/middle-east.pmtiles';
 
+  // --- Basemap style customizations ---
+  function scaleWidthExpr(expr, factor) {
+    if (typeof expr === 'number') return expr * factor;
+    if (!Array.isArray(expr) || expr[0] !== 'interpolate') return expr;
+    var scaled = [expr[0], expr[1], expr[2]];
+    for (var i = 3; i < expr.length; i += 2) {
+      scaled.push(expr[i]);
+      scaled.push(expr[i + 1] * factor);
+    }
+    return scaled;
+  }
+
+  function customizeBasemapLayers(layers) {
+    return layers.map(function(l) {
+      l = Object.assign({}, l, { paint: Object.assign({}, l.paint), layout: Object.assign({}, l.layout) });
+      if (l['source-layer'] === 'roads' && l.paint && l.paint['line-width']) {
+        l.paint['line-width'] = scaleWidthExpr(l.paint['line-width'], 0.4);
+      }
+      if (l.id === 'boundaries_country') {
+        l.filter = ['all', ['<=', 'kind_detail', 2], ['!=', 'disputed', true]];
+        l.paint['line-width'] = 2;
+      }
+      if (l.id === 'boundaries') {
+        l.filter = ['>', 'kind_detail', 2];
+        l.paint['line-width'] = 0.8;
+        l.paint['line-opacity'] = ['step', ['zoom'], 0, 9, 1];
+      }
+      return l;
+    });
+  }
+
+  var WARM_FLAVOR = Object.assign({}, (basemaps.themes ? basemaps.themes.light : basemaps.LIGHT), {
+    background:            '#f5f0e8',
+    earth:                 '#f5f0e8',
+    park_a:                '#d1e8c8',
+    park_b:                '#a8d890',
+    hospital:              '#f0e0e0',
+    industrial:            '#e0e8ec',
+    school:                '#f0e8d8',
+    wood_a:                '#c8d8b0',
+    wood_b:                '#8cc880',
+    pedestrian:            '#f0ebe0',
+    scrub_a:               '#d8e8d0',
+    scrub_b:               '#a0d090',
+    sand:                  '#f0e8c0',
+    beach:                 '#f0e8c0',
+    aerodrome:             '#e8e8f0',
+    runway:                '#f0f0f8',
+    water:                 '#aad3df',
+    buildings:             '#e8dfd6',
+    minor_service_casing:  '#e4ddd4',
+    minor_casing:          '#e4ddd4',
+    link_casing:           '#e0c840',
+    major_casing_early:    '#e0c840',
+    major_casing_late:     '#e0c840',
+    highway_casing_early:  '#e0a820',
+    highway_casing_late:   '#e0a820',
+    other:                 '#f5f0ea',
+    minor_service:         '#fafafa',
+    minor_a:               '#fafafa',
+    minor_b:               '#ffffff',
+    link:                  '#fde090',
+    major:                 '#fde090',
+    highway:               '#f8c840',
+    city_label:            '#333333',
+    city_label_halo:       '#ffffff',
+    subplace_label:        '#666666',
+    subplace_label_halo:   '#f5f0e8',
+    state_label:           '#888888',
+    state_label_halo:      '#f5f0e8',
+    boundaries:            '#555555',
+    country_label:         '#888888',
+    landcover: {
+      grassland: 'rgba(195, 235, 180, 1)',
+      barren:    'rgba(245, 235, 200, 1)',
+      urban_area:'rgba(228, 222, 212, 1)',
+      farmland:  'rgba(215, 235, 200, 1)',
+      glacier:   'rgba(255, 255, 255, 1)',
+      scrub:     'rgba(220, 235, 200, 1)',
+      forest:    'rgba(185, 225, 190, 1)'
+    }
+  });
+
+  var WARM_DARK_FLAVOR = Object.assign({}, (basemaps.themes ? basemaps.themes.dark : basemaps.DARK), {
+    background:            '#2a2a28',
+    earth:                 '#2a2a28',
+    park_a:                '#253528',
+    park_b:                '#28382c',
+    hospital:              '#352a2a',
+    industrial:            '#282c30',
+    school:                '#352f2a',
+    wood_a:                '#253020',
+    wood_b:                '#253520',
+    pedestrian:            '#282625',
+    scrub_a:               '#283028',
+    scrub_b:               '#263525',
+    sand:                  '#302d28',
+    beach:                 '#302d28',
+    aerodrome:             '#28282c',
+    runway:                '#353538',
+    water:                 '#1e3048',
+    buildings:             '#222220',
+    minor_service_casing:  '#333330',
+    minor_casing:          '#333330',
+    link_casing:           '#453828',
+    major_casing_early:    '#453828',
+    major_casing_late:     '#453828',
+    highway_casing_early:  '#453518',
+    highway_casing_late:   '#453518',
+    other:                 '#2c2c28',
+    minor_service:         '#333330',
+    minor_a:               '#333330',
+    minor_b:               '#383835',
+    link:                  '#454028',
+    major:                 '#454028',
+    highway:               '#555028',
+    city_label:            '#c0c0b8',
+    city_label_halo:       '#2a2a28',
+    subplace_label:        '#999890',
+    subplace_label_halo:   '#2a2a28',
+    state_label:           '#787870',
+    state_label_halo:      '#2a2a28',
+    boundaries:            '#606058',
+    country_label:         '#888880',
+    landcover: {
+      grassland: 'rgba(38, 58, 38, 1)',
+      barren:    'rgba(40, 38, 30, 1)',
+      urban_area:'rgba(35, 35, 30, 1)',
+      farmland:  'rgba(36, 48, 32, 1)',
+      glacier:   'rgba(38, 38, 42, 1)',
+      scrub:     'rgba(36, 46, 32, 1)',
+      forest:    'rgba(32, 50, 35, 1)'
+    }
+  });
+
+  function buildMapStyle(isDark, lang) {
+    var flavor = isDark ? WARM_DARK_FLAVOR : WARM_FLAVOR;
+    return {
+      version: 8,
+      glyphs: 'https://protomaps.github.io/basemaps-assets/fonts/{fontstack}/{range}.pbf',
+      sprite: 'https://protomaps.github.io/basemaps-assets/sprites/v4/' + (isDark ? 'dark' : 'light'),
+      sources: {
+        protomaps: {
+          type: 'vector',
+          url: PMTILES_URL
+        }
+      },
+      layers: customizeBasemapLayers(basemaps.layers('protomaps', flavor, { lang: lang }))
+    };
+  }
+    
   var MAP_STYLE = buildMapStyle(isDarkActive, currentLang);
 
   var map = new maplibregl.Map({
