@@ -2555,7 +2555,7 @@ var MAP_STYLE = buildMapStyle(isDarkActive, currentLang);
   }
 
   // --- Title classification ---
-  function classifyTitle(title) {
+    function classifyTitle(title) {
     title = title.replace(/\s+/g, ' ').trim();
 
     // Green — all-clear / event over (fades out)
@@ -2570,24 +2570,24 @@ var MAP_STYLE = buildMapStyle(isDarkActive, currentLang);
     }
 
     // Yellow — early warning / preparedness / stay near shelter
-    if (title === 'בדקות הקרובות צפויות להתקבל התרעות באזורך' ||
-        title.includes('לשפר את המיקום למיגון המיטבי') ||
-        title === 'יש לשהות בסמיכות למרחב המוגן' ||
+    if (title.includes('בדקות הקרובות צפויות להתקבל') ||
+        title.includes('לשפר את המיקום למיגון') ||
+        title.includes('לשהות בסמיכות למרחב המוגן') ||
         title.includes('להישאר בקרבתו')) {
       return 'yellow';
     }
 
-    // Purple — drone infiltration
-    if (title === 'חדירת כלי טיס עוין') {
+    // 🚨 PURPLE FIX: Use .includes() to catch spelling variations (עוין vs עויין)
+    if (title.includes('כלי טיס') || title.includes('כטב"מ')) {
       return 'purple';
     }
 
     // Red — active danger (missiles / non-conventional / terrorists / shelter now)
-    if (title === 'ירי רקטות וטילים' ||
-        title === 'נשק לא קונבנציונלי' ||
-        title === 'חדירת מחבלים' ||
-        title === 'היכנסו מייד למרחב המוגן' ||
-        title === 'היכנסו למרחב המוגן') {
+    if (title.includes('רקטות וטילים') ||
+        title.includes('קונבנציונלי') ||
+        title.includes('חדירת מחבלים') ||
+        title.includes('היכנסו מייד') ||
+        title.includes('היכנסו למרחב המוגן')) {
       return 'red';
     }
 
@@ -3119,20 +3119,32 @@ function setLocationState(name, state, since) {
   }
 
   // --- Process alerts ---
-    var lastLiveAlertPayload = ''; // Required for deduplication
+
+      var lastLiveAlertPayload = '';
 
   function processLiveAlert(alert) {
     if (!alert || !alert.data || !alert.title) return;
     
-    var title = (alert.desc || alert.title).replace(/\s+/g, ' ').trim();
-    var state = classifyTitle(title);
+    var isNewAlert = alert.id !== lastLiveAlertId;
+    if (!isNewAlert) return; 
+    
+    lastLiveAlertId = alert.id;
+    
+    // 🚨 THE FIX: Combine both title and desc so we don't overwrite the threat type!
+    var combinedText = (alert.title + ' ' + (alert.desc || '')).replace(/\s+/g, ' ').trim();
+    var state = classifyTitle(combinedText);
+    
+    // We still use the clean title for the visual timeline history
+    var cleanTitle = alert.title.replace(/\s+/g, ' ').trim();
+    
     if (state !== 'green') lastDangerTime = Date.now();
     var locations = alert.data;
     
     var now = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Jerusalem', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(new Date());
     for (var i = 0; i < locations.length; i++) {
       var loc = normalizeGeresh(locations[i]);
-      recordHistory(loc, title, now, state);
+      recordHistory(loc, cleanTitle, now, state);
+      
       if (isLiveMode) {
         setLocationState(loc, state);
       } else if (liveLocationStates) {
@@ -3146,7 +3158,7 @@ function setLocationState(name, state, since) {
     document.dispatchEvent(new CustomEvent('app:stateChanged'));
   }
 
-  // Expose for debugging/external injection
+    // Expose for debugging/external injection
   window.injectAlert = function(mockAlert) {
     console.log('Injecting mock alert:', mockAlert);
     processLiveAlert(mockAlert);
@@ -3212,7 +3224,6 @@ function setLocationState(name, state, since) {
       document.dispatchEvent(new CustomEvent('app:stateChanged'));
     }
   }
-
 
   // --- Green fade-out ---
 function fadeGreenMarkers() {
