@@ -3281,19 +3281,20 @@ function fadeGreenMarkers() {
         try { parsedData = JSON.parse(text); }
         catch (e) { return; }
     
-        var alertArray = Array.isArray(parsedData) ? parsedData : [parsedData];
-alertArray.forEach(function(alert) {
+var alertArray = Array.isArray(parsedData) ? parsedData : [parsedData];
+        alertArray.forEach(function(alert) {
             processLiveAlert(alert);
         });
-      }) // This closes the .then(function(text) {
+      })
       .catch(function(err) {
         liveErrors++;
         lastErrorMsg = 'Live alerts: ' + err.message;
         if (liveErrors > 3) setStatus('err', 'בעיית תקשורת לפיקוד העורף. מנסה שוב...');
         console.error('Live poll error:', err);
       });
-  } // This closes the function fetchLiveAlerts() {
-    
+  } // The function ends here. Nothing should be between this and the next variable.
+
+  var processedHistoryKeys = new Set();    
       .catch(function(err) {
         liveErrors++;
         lastErrorMsg = 'Live alerts: ' + err.message;
