@@ -3091,24 +3091,16 @@ function setLocationState(name, state, since) {
   }
 
   // --- Process alerts ---
-  var lastLiveAlertId = null;
+    var lastLiveAlertPayload = ''; // Required for deduplication
 
   function processLiveAlert(alert) {
     if (!alert || !alert.data || !alert.title) return;
-    
-    // 🚨 FRONTEND FIX: Stop processing if this is the exact same alert we just handled
-    var isNewAlert = alert.id !== lastLiveAlertId;
-    if (!isNewAlert) return; 
-    
-    lastLiveAlertId = alert.id;
     
     var title = (alert.desc || alert.title).replace(/\s+/g, ' ').trim();
     var state = classifyTitle(title);
     if (state !== 'green') lastDangerTime = Date.now();
     var locations = alert.data;
-    if (!Array.isArray(locations)) return;
-    var isNewAlert = alert.id !== lastLiveAlertId;
-    lastLiveAlertId = alert.id;
+    
     var now = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Jerusalem', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(new Date());
     for (var i = 0; i < locations.length; i++) {
       var loc = normalizeGeresh(locations[i]);
@@ -3119,7 +3111,8 @@ function setLocationState(name, state, since) {
         updateShadowState(loc, state);
       }
     }
-    if (shouldAutoZoomToEvents() && isLiveMode && isNewAlert && !selectedLocation) {
+    
+    if (shouldAutoZoomToEvents() && isLiveMode && !selectedLocation) {
       maybeZoomToEvent();
     }
     document.dispatchEvent(new CustomEvent('app:stateChanged'));
@@ -3368,11 +3361,25 @@ function fadeGreenMarkers() {
         liveErrors = 0;
         try { sessionStorage.setItem('oref-last-poll', String(Date.now())); } catch(e) {}
         if (initialized && isLiveMode && historyErrors <= 3) updateLiveStatus();
-        if (!text) return; // no active alert
-        var alert;
-        try { alert = JSON.parse(text); }
-        catch (e) { console.warn('Live JSON parse failed (' + text.length + ' chars), payload:', JSON.stringify(text), e); return; }
-        processLiveAlert(alert);
+        
+        if (!text || text === "[]") {
+            lastLiveAlertPayload = ''; // Clear memory when quiet
+            return;
+        }
+
+        // 🚨 FRONTEND DEDUPLICATION FIX: Stop processing if exact payload hasn't changed
+        if (text === lastLiveAlertPayload) return;
+        lastLiveAlertPayload = text;
+
+        var parsedData;
+        try { parsedData = JSON.parse(text); }
+        catch (e) { return; }
+        
+        // 🚨 FRONTEND ARRAYS FIX: Loop through and process every simultaneous alert safely
+        var alertArray = Array.isArray(parsedData) ? parsedData : [parsedData];
+        alertArray.forEach(function(alert) {
+            processLiveAlert(alert);
+        });
       })
       .catch(function(err) {
         liveErrors++;
