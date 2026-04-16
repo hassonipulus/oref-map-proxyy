@@ -3185,17 +3185,22 @@ function fadeGreenMarkers() {
         var parsedData;
         try { parsedData = JSON.parse(text); }
         catch (e) { return; }
-        
-        // 🚨 FRONTEND ARRAYS FIX: Loop through and process every simultaneous alert safely
+    
         var alertArray = Array.isArray(parsedData) ? parsedData : [parsedData];
         alertArray.forEach(function(alert) {
             processLiveAlert(alert);
         });
       })
-  
-  var processedHistoryKeys = new Set();
-      
-  function processHistoryEntry(entry) {
+        
+      .catch(function(err) {
+        liveErrors++;
+        lastErrorMsg = 'Live alerts: ' + err.message;
+        if (liveErrors > 3) setStatus('err', 'בעיית תקשורת לפיקוד העורף. מנסה שוב...');
+        console.error('Live poll error:', err);
+      });
+  } // 🚨 THIS CLOSES THE FUNCTION!
+
+  var processedHistoryKeys = new Set();  function processHistoryEntry(entry) {
     if (!entry || !entry.data || !entry.title) return;
     
     var title = (entry.title + ' ' + (entry.desc || '')).replace(/\s+/g, ' ').trim();
@@ -4658,10 +4663,10 @@ function fadeGreenMarkers() {
     showToast('מספר המבקרים בשעה האחרונה');
   });
 
-  init();
+init();
   _extInitDone = true;
   _maybeDispatchReady();
-}();
+})(); // 🚨 ADDED THE MISSING ")" RIGHT HERE
 </script>
 <script>
 if ('serviceWorker' in navigator) {
