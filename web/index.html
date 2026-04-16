@@ -1463,26 +1463,6 @@ function scaleWidthExpr(expr, factor) {
         return { url: url };
     }
   });
-
-  map.dragRotate.disable();
-  map.touchZoomRotate.disableRotation();
-
-  map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-left');
-
-  var navGroup = document.querySelector('.maplibregl-ctrl-group');
-  if (navGroup) {
-      var resetBtn = document.createElement('button');
-      resetBtn.type = 'button';
-      resetBtn.title = 'איפוס תצוגה'; 
-      resetBtn.innerHTML = '<span class="maplibregl-ctrl-icon" aria-hidden="true" style="display:flex; align-items:center; justify-content:center;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#333" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg></span>';
-      resetBtn.addEventListener('click', function(e) {
-          e.stopPropagation();
-          isZoomingProgrammatically = true;
-          map.flyTo({ center: [DEFAULT_CENTER[1], DEFAULT_CENTER[0]], zoom: DEFAULT_ZOOM, bearing: 0, pitch: 0 });
-          map.once('moveend', function() { isZoomingProgrammatically = false; });
-      });
-      navGroup.appendChild(resetBtn);
-  }
   
   var mapLoaded = false;
   var polygonsGeoJSON = { type: 'FeatureCollection', features: [] };
