@@ -1291,9 +1291,17 @@ function apiFetch(endpoint) {
     return scaled;
   }
 
-  function customizeBasemapLayers(layers) {
+    function customizeBasemapLayers(layers) {
     return layers.map(function(l) {
       l = Object.assign({}, l, { paint: Object.assign({}, l.paint), layout: Object.assign({}, l.layout) });
+      
+      // 🚨 RESTORE CITY NAMES & FORCE HEBREW
+      if (l.type === 'symbol' && l.layout && l.layout['text-field']) {
+          // Tries strictly Hebrew first. If the global server stripped it, 
+          // fallback to the default local name (which defaults to Hebrew in Israel)
+          l.layout['text-field'] = ['coalesce', ['get', 'name:he'], ['get', 'name']];
+      }
+
       if (l['source-layer'] === 'roads' && l.paint && l.paint['line-width']) {
         l.paint['line-width'] = scaleWidthExpr(l.paint['line-width'], 0.4);
       }
@@ -1309,6 +1317,7 @@ function apiFetch(endpoint) {
       return l;
     });
   }
+
 
   var WARM_FLAVOR = Object.assign({}, (basemaps.themes ? basemaps.themes.light : basemaps.LIGHT), {
     background:            '#f5f0e8',
