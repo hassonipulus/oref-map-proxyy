@@ -1715,11 +1715,98 @@ map.on('click', 'alerts-hit', function(e) {
     map.on('click', 'alerts-hit', function(e) {
       if (menuOpen || drivingModeFeatureEnabled) return;
       e.originalEvent.stopPropagation();
+  var map = new maplibregl.Map({
+    container: 'map',
+    style: MAP_STYLE,
+    center: [DEFAULT_CENTER[1], DEFAULT_CENTER[0]], 
+    zoom: DEFAULT_ZOOM,
+    maxBounds: [[25.0, 6.0], [70.0, 44.0]],
+    touchPitch: false,
+    maxTileCacheZoomLevels: 8,
+    fadeDuration: 0,
+    attributionControl: false
+    // 🚨 I completely removed the transformRequest so it stops hitting the broken server!
+  });
+  
+  var mapLoaded = false;
+  var polygonsGeoJSON = { type: 'FeatureCollection', features: [] };
+  var featureMap = {}; 
+  var pendingPolygonData = null;
+
+  map.on('load', function() {
+    mapLoaded = true;
+    console.log("Map engine started successfully.");
+
+    map.dragRotate.disable();
+    map.touchZoomRotate.disableRotation();
+    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-left');
+
+    var navGroup = document.querySelector('.maplibregl-ctrl-group');
+    if (navGroup) {
+        var resetBtn = document.createElement('button');
+        resetBtn.type = 'button';
+        resetBtn.title = 'איפוס תצוגה'; 
+        resetBtn.innerHTML = '<span class="maplibregl-ctrl-icon" aria-hidden="true" style="display:flex; align-items:center; justify-content:center;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#333" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg></span>';
+        resetBtn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            isZoomingProgrammatically = true;
+            map.flyTo({ center: [DEFAULT_CENTER[1], DEFAULT_CENTER[0]], zoom: DEFAULT_ZOOM, bearing: 0, pitch: 0 });
+            map.once('moveend', function() { isZoomingProgrammatically = false; });
+        });
+        navGroup.appendChild(resetBtn);
+    }
+
+    map.addLayer({
+      id: 'boundaries_disputed',
+      type: 'line',
+      source: 'protomaps',
+      'source-layer': 'boundaries',
+      filter: ['all', ['<=', 'kind_detail', 2], ['==', 'disputed', true]],
+      paint: {
+        'line-color': '#777',
+        'line-width': 1.5,
+        'line-dasharray': [4, 3]
+      }
+    }, 'boundaries_country');
+
+    map.addSource('alerts-source', { type: 'geojson', data: polygonsGeoJSON });
+
+    map.addLayer({
+      id: 'alerts-fill',
+      type: 'fill',
+      source: 'alerts-source',
+      paint: {
+        'fill-color': ['coalesce', ['feature-state', 'fillColor'], '#888888'],
+        'fill-opacity': ['coalesce', ['feature-state', 'fillOpacity'], 0.01]
+      }
+    });
+
+    map.addLayer({
+      id: 'alerts-hit',
+      type: 'fill',
+      source: 'alerts-source',
+      paint: { 'fill-opacity': 0, 'fill-color': 'transparent' }
+    });
+
+    map.addLayer({
+      id: 'alerts-stroke',
+      type: 'line',
+      source: 'alerts-source',
+      paint: {
+        'line-color': ['coalesce', ['feature-state', 'lineColor'], '#aaaaaa'],
+        'line-opacity': ['coalesce', ['feature-state', 'lineOpacity'], 0], 
+        'line-width': ['coalesce', ['feature-state', 'lineWidth'], 1]
+      }
+    });
+
+    map.on('click', 'alerts-hit', function(e) {
+      if (menuOpen || drivingModeFeatureEnabled) return;
+      e.originalEvent.stopPropagation();
       
       var validFeature = null;
       for (var i = 0; i < e.features.length; i++) {
           var fName = e.features[i].properties.name.toLowerCase();
-          // Ignored if it contains border, israel, or ישראל
+          // The Ultimate Border Filter
           if (!fName.includes('border') && !fName.includes('israel') && !fName.includes('ישראל')) {
               validFeature = e.features[i];
               break;
@@ -1744,6 +1831,7 @@ map.on('click', 'alerts-hit', function(e) {
       pendingPolygonData = null;
     }
   });
+
 
 
   function updateMapLibreSource() {
