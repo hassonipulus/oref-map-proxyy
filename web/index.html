@@ -1290,44 +1290,46 @@ function apiFetch(endpoint) {
     }
     return scaled;
   
-  function customizeBasemapLayers(layers) {
     function customizeBasemapLayers(layers) {
-    // 🚨 1. COMPLETELY FILTER OUT NOISE: Don't even let POIs or transit stops load
-    var cleanLayers = layers.filter(function(l) {
-        return l['source-layer'] !== 'pois' && l['source-layer'] !== 'transit';
-    });
+    return layers.map(function(l) {
+      // Safely clone paint and layout so we don't crash on undefined properties
+      var paint = Object.assign({}, l.paint || {});
+      var layout = Object.assign({}, l.layout || {});
+      var newLayer = Object.assign({}, l, { paint: paint, layout: layout });
 
-    return cleanLayers.map(function(l) {
-      l = Object.assign({}, l, { paint: Object.assign({}, l.paint), layout: Object.assign({}, l.layout) });
-      
-      if (l.type === 'symbol') {
-          // 🚨 2. INVISIBLE DOTS: Instead of deleting the icon, just make it 100% transparent!
-          // This satisfies MapLibre's strict validation engine so it won't crash.
-          l.paint['icon-opacity'] = 0;
+      // 1. COMPLETELY FILTER OUT NOISE: Hide POIs and transit stops
+      if (newLayer['source-layer'] === 'pois' || newLayer['source-layer'] === 'transit') {
+          newLayer.layout.visibility = 'none';
+      }
+
+      if (newLayer.type === 'symbol') {
+          // 🚨 THE CRASH FIX: Only apply icon-opacity IF the layer actually has an icon!
+          if (newLayer.layout['icon-image']) {
+              newLayer.paint['icon-opacity'] = 0;
+          }
           
-          // 3. RESTORE CITY NAMES & FORCE HEBREW
-          if (l.layout['text-field']) {
-              l.layout['text-field'] = ['coalesce', ['get', 'name:he'], ['get', 'name']];
+          // RESTORE CITY NAMES & FORCE HEBREW
+          if (newLayer.layout['text-field']) {
+              newLayer.layout['text-field'] = ['coalesce', ['get', 'name:he'], ['get', 'name']];
           }
       }
 
-      if (l['source-layer'] === 'roads' && l.paint && l.paint['line-width']) {
-        l.paint['line-width'] = scaleWidthExpr(l.paint['line-width'], 0.4);
+      if (newLayer['source-layer'] === 'roads' && newLayer.paint['line-width']) {
+        newLayer.paint['line-width'] = scaleWidthExpr(newLayer.paint['line-width'], 0.4);
       }
-      if (l.id === 'boundaries_country') {
-        l.filter = ['all', ['<=', 'kind_detail', 2], ['!=', 'disputed', true]];
-        l.paint['line-width'] = 2;
+      if (newLayer.id === 'boundaries_country') {
+        newLayer.filter = ['all', ['<=', 'kind_detail', 2], ['!=', 'disputed', true]];
+        newLayer.paint['line-width'] = 2;
       }
-      if (l.id === 'boundaries') {
-        l.filter = ['>', 'kind_detail', 2];
-        l.paint['line-width'] = 0.8;
-        l.paint['line-opacity'] = ['step', ['zoom'], 0, 9, 1];
+      if (newLayer.id === 'boundaries') {
+        newLayer.filter = ['>', 'kind_detail', 2];
+        newLayer.paint['line-width'] = 0.8;
+        newLayer.paint['line-opacity'] = ['step', ['zoom'], 0, 9, 1];
       }
-      return l;
+      
+      return newLayer;
     });
   }
-
-
 
   var WARM_FLAVOR = Object.assign({}, (basemaps.themes ? basemaps.themes.light : basemaps.LIGHT), {
     background:            '#f5f0e8',
